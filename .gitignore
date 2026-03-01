@@ -1,0 +1,35 @@
+# Terraform state — never commit these
+*.tfstate
+*.tfstate.backup
+*.tfstate.*.backup
+
+# Terraform working directory
+.terraform/
+.terraform.lock.hcl
+
+# Variable files may contain secrets — use terraform.tfvars.example as the template
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# Crash and debug logs
+crash.log
+crash.*.log
+
+# Terraform override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# SSH private keys
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Editor / OS artifacts
+.DS_Store
+.idea/
+*.swp
+*.swo

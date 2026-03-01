@@ -1,0 +1,78 @@
+# ═══════════════════════════════════════════════════════════════
+# OpenClaw Terraform — variable example file
+# Copy to terraform.tfvars and fill in your values.
+# NEVER commit terraform.tfvars (it is in .gitignore).
+# ═══════════════════════════════════════════════════════════════
+
+# ── Provider selection ──────────────────────────────────────────
+# "aws" → deploys an EC2 instance
+# "digitalocean" → deploys a Droplet
+cloud_provider = "aws"
+
+project_name = "openclaw"
+
+# ── AWS ─────────────────────────────────────────────────────────
+# Leave blank if deploying to DigitalOcean.
+# Alternatively, omit these and rely on the AWS_ACCESS_KEY_ID /
+# AWS_SECRET_ACCESS_KEY environment variables or an IAM role.
+
+aws_region     = "us-east-1"
+aws_access_key = "YOUR_AWS_ACCESS_KEY_ID"
+aws_secret_key = "YOUR_AWS_SECRET_ACCESS_KEY"
+
+# Instance size — t3.small = 1 vCPU / 2 GB RAM (default)
+# Upgrade examples: t3.medium (2/4 GB), t3.large (2/8 GB)
+aws_instance_type = "t3.small"
+
+# EBS data volume size in GB (default 50 GB, separate from 20 GB OS disk)
+aws_disk_size_gb = 50
+
+# Leave blank to create a fresh EBS volume.
+# Set to an existing volume ID (e.g. "vol-0abc123def456789") to reuse it.
+aws_existing_volume_id = ""
+
+# ── DigitalOcean ─────────────────────────────────────────────────
+# Leave blank if deploying to AWS.
+
+do_token  = "YOUR_DIGITALOCEAN_API_TOKEN"
+do_region = "nyc3" # Other options: sfo3, fra1, lon1, sgp1, etc.
+
+# Droplet size — s-2vcpu-2gb = 2 vCPU / 2 GB RAM / 60 GB root disk (default)
+# Upgrade examples: s-2vcpu-4gb (4 GB), s-4vcpu-8gb (8 GB)
+do_droplet_size = "s-2vcpu-2gb"
+
+# Extra block storage volume in GB (default 20 GB — root disk is already 60 GB)
+do_disk_size_gb = 20
+
+# Leave blank to create a new volume.
+# To reuse an existing volume, set BOTH fields:
+do_existing_volume_id   = ""
+do_existing_volume_name = ""
+
+# ── SSH ──────────────────────────────────────────────────────────
+# Paste the full content of your public key (e.g. ~/.ssh/id_ed25519.pub)
+ssh_public_key = "ssh-ed25519 AAAA... user@host"
+
+# Restrict SSH to your own IP for best security: "203.0.113.5/32"
+# Leave as 0.0.0.0/0 only if you rely solely on Tailscale for access control.
+allowed_ssh_cidr = "0.0.0.0/0"
+
+# ── LLM API keys ─────────────────────────────────────────────────
+# Supply only the keys for the providers you intend to use in OpenClaw.
+# Unused keys can be left as empty strings.
+
+anthropic_api_key = "sk-ant-api03-..."  # Claude (Opus, Sonnet, Haiku)
+openai_api_key    = "sk-..."            # GPT-4o, o3, etc.
+groq_api_key      = ""                  # e.g. gsk_...  (Llama, Mixtral via Groq)
+gemini_api_key    = ""                  # e.g. AIzaSy...
+
+# OpenClaw image tag — pin to a specific version for reproducibility
+openclaw_version = "latest"
+
+# ── Tailscale ────────────────────────────────────────────────────
+# Strongly recommended: keeps the dashboard off the public internet.
+# Generate an auth key at: https://login.tailscale.com/admin/settings/keys
+# Use a reusable key so re-deployments don't require a new key each time.
+
+tailscale_enabled  = true
+tailscale_auth_key = "tskey-auth-..."
