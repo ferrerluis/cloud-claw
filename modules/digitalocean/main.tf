@@ -20,6 +20,8 @@ locals {
   cloud_init = templatefile("${path.module}/../common/templates/cloud_init.yaml.tpl", {
     provider_type      = "digitalocean"
     project_name       = var.project_name
+    admin_username     = var.admin_username
+    admin_ssh_public_key = var.ssh_public_key
     ebs_volume_id      = ""
     do_volume_name     = local.do_volume_name
     anthropic_api_key  = var.anthropic_api_key

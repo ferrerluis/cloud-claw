@@ -27,6 +27,7 @@ module "aws" {
   source = "./modules/aws"
 
   project_name           = var.project_name
+  admin_username         = var.admin_username
   aws_region             = var.aws_region
   aws_instance_type      = var.aws_instance_type
   aws_ami_id             = var.aws_ami_id
@@ -55,6 +56,7 @@ module "digitalocean" {
   source = "./modules/digitalocean"
 
   project_name    = var.project_name
+  admin_username  = var.admin_username
   do_region       = var.do_region
   do_droplet_size = var.do_droplet_size
   do_disk_size_gb = var.do_disk_size_gb

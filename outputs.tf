@@ -5,8 +5,6 @@ locals {
     ? one(module.aws[*].instance_public_ip)
     : one(module.digitalocean[*].instance_public_ip)
   )
-
-  ssh_user = var.cloud_provider == "aws" ? "ubuntu" : "root"
 }
 
 output "provider_used" {
@@ -21,7 +19,7 @@ output "instance_public_ip" {
 
 output "ssh_command" {
   description = "SSH command to connect to the instance."
-  value       = "ssh ${local.ssh_user}@${local.instance_public_ip}"
+  value       = "ssh ${var.admin_username}@${local.instance_public_ip}"
 }
 
 output "tailscale_note" {
@@ -29,7 +27,7 @@ output "tailscale_note" {
   value = var.tailscale_enabled ? (
     "Tailscale is enabled. Once the instance boots (~2 min), the device '${var.project_name}' should appear in your Tailscale admin console. Dashboard: http://${var.project_name}:18789"
   ) : (
-    "Tailscale is DISABLED. Use an SSH tunnel to reach the dashboard: ssh -L 18789:127.0.0.1:18789 ${local.ssh_user}@${local.instance_public_ip}  then open http://localhost:18789"
+    "Tailscale is DISABLED. Use an SSH tunnel to reach the dashboard: ssh -L 18789:127.0.0.1:18789 ${var.admin_username}@${local.instance_public_ip}  then open http://localhost:18789"
   )
 }
 
@@ -44,5 +42,5 @@ output "dashboard_url" {
 
 output "bootstrap_log_command" {
   description = "Command to watch the bootstrap log on the server."
-  value       = "ssh ${local.ssh_user}@${local.instance_public_ip} 'tail -f /var/log/openclaw-bootstrap.log'"
+  value       = "ssh ${var.admin_username}@${local.instance_public_ip} 'tail -f /var/log/openclaw-bootstrap.log'"
 }

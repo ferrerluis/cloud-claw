@@ -11,6 +11,9 @@ cloud_provider = "aws"
 
 project_name = "openclaw"
 
+# Standard SSH/admin username created on the VM across providers.
+admin_username = "admin"
+
 # ── AWS ─────────────────────────────────────────────────────────
 # Leave blank if deploying to DigitalOcean.
 # Alternatively, omit these and rely on the AWS_ACCESS_KEY_ID /

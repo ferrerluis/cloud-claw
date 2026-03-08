@@ -178,15 +178,40 @@ write_files:
       echo " OpenClaw Bootstrap — $(date)"
       echo "========================================================"
 
-      # 1. Docker
+      # 1. Ensure standardized admin user exists on both providers
+      ADMIN_USER="${admin_username}"
+      echo "[admin] Ensuring admin user '$ADMIN_USER' exists..."
+      if ! id "$ADMIN_USER" >/dev/null 2>&1; then
+        useradd --create-home --shell /bin/bash --groups sudo "$ADMIN_USER"
+      fi
+
+      ADMIN_HOME="$(getent passwd "$ADMIN_USER" | cut -d: -f6)"
+      if [ -z "$ADMIN_HOME" ]; then
+        echo "[admin] ERROR: Could not resolve home directory for user $ADMIN_USER" >&2
+        exit 1
+      fi
+
+      install -d -m 700 "$ADMIN_HOME/.ssh"
+      touch "$ADMIN_HOME/.ssh/authorized_keys"
+      if ! grep -qxF '${admin_ssh_public_key}' "$ADMIN_HOME/.ssh/authorized_keys"; then
+        echo '${admin_ssh_public_key}' >> "$ADMIN_HOME/.ssh/authorized_keys"
+      fi
+      chown -R "$ADMIN_USER:$ADMIN_USER" "$ADMIN_HOME/.ssh"
+      chmod 700 "$ADMIN_HOME/.ssh"
+      chmod 600 "$ADMIN_HOME/.ssh/authorized_keys"
+      echo "$ADMIN_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-openclaw-admin
+      chmod 440 /etc/sudoers.d/90-openclaw-admin
+      echo "[admin] Done."
+
+      # 2. Docker
       echo "[docker] Installing Docker..."
       curl -fsSL https://get.docker.com | sh
       systemctl enable --now docker
-      usermod -aG docker ubuntu
+      usermod -aG docker "$ADMIN_USER"
       echo "[docker] Done."
 
 %{~ if tailscale_enabled ~}
-      # 2. Tailscale
+      # 3. Tailscale
       echo "[tailscale] Installing Tailscale..."
       curl -fsSL https://tailscale.com/install.sh | sh
       tailscale up \
@@ -198,11 +223,11 @@ write_files:
       echo "[tailscale] IP: $TAILSCALE_IP"
 %{~ endif ~}
 
-      # 3. Persistent volume
+      # 4. Persistent volume
       echo "[volume] Mounting persistent storage..."
       /root/mount-openclaw-volume.sh
 
-      # 4. Start OpenClaw
+      # 5. Start OpenClaw
       echo "[openclaw] Enabling and starting OpenClaw service..."
       systemctl daemon-reload
       systemctl enable openclaw
@@ -213,7 +238,7 @@ write_files:
 %{~ if tailscale_enabled ~}
       echo " Dashboard: http://${project_name}:18789  (via Tailscale)"
 %{~ else ~}
-      echo " Dashboard: ssh -L 18789:127.0.0.1:18789 ubuntu@<IP>"
+      echo " Dashboard: ssh -L 18789:127.0.0.1:18789 ${admin_username}@<IP>"
 %{~ endif ~}
       echo " Logs:      journalctl -u openclaw -f"
       echo "========================================================"

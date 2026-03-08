@@ -15,5 +15,5 @@ output "volume_name" {
 
 output "ssh_command" {
   description = "SSH command to connect to the Droplet."
-  value       = "ssh root@${digitalocean_droplet.this.ipv4_address}"
+  value       = "ssh ${var.admin_username}@${digitalocean_droplet.this.ipv4_address}"
 }

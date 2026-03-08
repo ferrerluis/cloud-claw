@@ -15,5 +15,5 @@ output "ebs_volume_id" {
 
 output "ssh_command" {
   description = "SSH command to connect to the instance."
-  value       = "ssh ubuntu@${aws_instance.this.public_ip}"
+  value       = "ssh ${var.admin_username}@${aws_instance.this.public_ip}"
 }

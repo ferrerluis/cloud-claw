@@ -72,10 +72,10 @@ After `apply` completes, Terraform prints:
 
 ```
 instance_public_ip     = "1.2.3.4"
-ssh_command            = "ssh ubuntu@1.2.3.4"
+ssh_command            = "ssh admin@1.2.3.4"
 tailscale_note         = "Tailscale is enabled. Device 'openclaw' will appear in your admin console..."
 dashboard_url          = "http://openclaw:18789  (via Tailscale)"
-bootstrap_log_command  = "ssh ubuntu@1.2.3.4 'tail -f /var/log/openclaw-bootstrap.log'"
+bootstrap_log_command  = "ssh admin@1.2.3.4 'tail -f /var/log/openclaw-bootstrap.log'"
 ```
 
 Run `bootstrap_log_command` to watch the install progress in real time.
@@ -93,7 +93,7 @@ Run `bootstrap_log_command` to watch the install progress in real time.
 ### Without Tailscale (SSH tunnel)
 
 ```bash
-ssh -L 18789:127.0.0.1:18789 ubuntu@<instance_public_ip>
+ssh -L 18789:127.0.0.1:18789 admin@<instance_public_ip>
 # Then open http://localhost:18789 in your browser
 ```
 
@@ -145,7 +145,7 @@ do_existing_volume_id   = "12345678-..."
 do_existing_volume_name = "openclaw-data"
 ```
 
-SSH user for DigitalOcean is `root` (output shows `ssh root@<ip>`).
+SSH user defaults to `admin` (customizable with `admin_username`).
 
 ---
 
@@ -155,6 +155,7 @@ SSH user for DigitalOcean is `root` (output shows `ssh root@<ip>`).
 |----------|---------|-------------|
 | `cloud_provider` | `"aws"` | `"aws"` or `"digitalocean"` |
 | `project_name` | `"openclaw"` | Prefix for all resource names |
+| `admin_username` | `"admin"` | Standard SSH/admin username created on the VM |
 | `aws_region` | `"us-east-1"` | AWS region |
 | `aws_access_key` | `""` | AWS access key (or use env vars) |
 | `aws_secret_key` | `""` | AWS secret key (or use env vars) |

@@ -19,6 +19,20 @@ variable "project_name" {
   default     = "openclaw"
 }
 
+variable "admin_username" {
+  description = "OS username to use for SSH/admin access across providers."
+  type        = string
+  default     = "admin"
+
+  validation {
+    condition = (
+      can(regex("^[a-z_][a-z0-9_-]{0,31}$", var.admin_username)) &&
+      var.admin_username != "root"
+    )
+    error_message = "admin_username must be a valid Linux username and cannot be \"root\"."
+  }
+}
+
 # ─────────────────────────────────────────────────────────
 # AWS
 # ─────────────────────────────────────────────────────────
@@ -100,12 +114,28 @@ variable "do_existing_volume_id" {
   description = "Existing DigitalOcean volume ID to attach instead of creating a new one. Must also set do_existing_volume_name."
   type        = string
   default     = ""
+
+  validation {
+    condition = (
+      trimspace(var.do_existing_volume_id) == "" ||
+      trimspace(var.do_existing_volume_name) != ""
+    )
+    error_message = "When do_existing_volume_id is set, do_existing_volume_name must also be set."
+  }
 }
 
 variable "do_existing_volume_name" {
   description = "Name of the existing DigitalOcean volume (required when do_existing_volume_id is set, used to derive the device path)."
   type        = string
   default     = ""
+
+  validation {
+    condition = (
+      trimspace(var.do_existing_volume_name) == "" ||
+      trimspace(var.do_existing_volume_id) != ""
+    )
+    error_message = "do_existing_volume_name can only be set when do_existing_volume_id is also set."
+  }
 }
 
 # ─────────────────────────────────────────────────────────
@@ -176,4 +206,12 @@ variable "tailscale_auth_key" {
   type        = string
   default     = ""
   sensitive   = true
+
+  validation {
+    condition = (
+      var.tailscale_enabled == false ||
+      trimspace(var.tailscale_auth_key) != ""
+    )
+    error_message = "tailscale_auth_key must be set when tailscale_enabled is true."
+  }
 }
