@@ -28,6 +28,7 @@ On first boot, `cloud-init` runs a script that:
 4. Creates and starts a `systemd` service (`openclaw`) that runs `docker compose up`
 5. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
 6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste
+7. Enables bundled `whatsapp` and `telegram` channel plugins
 
 OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — never publicly exposed.
 
@@ -78,6 +79,7 @@ tailscale_note         = "Tailscale is enabled. Sidecar device 'openclaw' will a
 dashboard_url          = "https://openclaw  (via Tailscale Serve)"
 dashboard_url_with_token_import = "https://openclaw/#token=<gateway-token>"
 pair_latest_command    = "ssh admin@1.2.3.4 'docker exec openclaw-openclaw-1 openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789'"
+whatsapp_login_command = "ssh -t admin@1.2.3.4 'sudo docker exec -it openclaw-openclaw-1 openclaw channels login --channel whatsapp --verbose'"
 bootstrap_log_command  = "ssh admin@1.2.3.4 'tail -f /var/log/openclaw-bootstrap.log'"
 ```
 
@@ -198,6 +200,7 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `dashboard_url_with_token_import` | First-time URL that auto-imports token into Control UI |
 | `gateway_token` | Gateway token value |
 | `pair_latest_command` | One-shot command to approve the latest pending device pairing |
+| `whatsapp_login_command` | Interactive QR login command for WhatsApp |
 | `bootstrap_log_command` | Tail the bootstrap log remotely |
 | `provider_used` | Which provider was deployed |
 

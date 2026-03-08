@@ -59,6 +59,11 @@ output "pair_latest_command" {
   value       = "ssh ${var.admin_username}@${local.instance_public_ip} 'docker exec openclaw-openclaw-1 openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789'"
 }
 
+output "whatsapp_login_command" {
+  description = "Interactive command to link WhatsApp by scanning QR from your terminal."
+  value       = "ssh -t ${var.admin_username}@${local.instance_public_ip} 'sudo docker exec -it openclaw-openclaw-1 openclaw channels login --channel whatsapp --verbose'"
+}
+
 output "bootstrap_log_command" {
   description = "Command to watch the bootstrap log on the server."
   value       = "ssh ${var.admin_username}@${local.instance_public_ip} 'tail -f /var/log/openclaw-bootstrap.log'"

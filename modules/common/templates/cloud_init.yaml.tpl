@@ -110,20 +110,45 @@ write_files:
         exit 1
       fi
 
-      if [ -n "$${TAILSCALE_AUTH_KEY:-}" ]; then
-        # Always prefer authkey when present; state file can exist before first login.
-        tailscale --socket="$SOCK" up \
-          --authkey="$TAILSCALE_AUTH_KEY" \
-          --hostname="$TAILSCALE_HOSTNAME" \
-          --accept-routes
-      else
-        if [ ! -s "$STATE_FILE" ]; then
-          echo "TAILSCALE_AUTH_KEY is required for first bootstrap" >&2
-          exit 1
+      tailscale_up() {
+        if [ -n "$${TAILSCALE_AUTH_KEY:-}" ]; then
+          # Always prefer authkey when present; state file can exist before first login.
+          tailscale --socket="$SOCK" up \
+            --authkey="$TAILSCALE_AUTH_KEY" \
+            --hostname="$TAILSCALE_HOSTNAME" \
+            --accept-routes
+        else
+          if [ ! -s "$STATE_FILE" ]; then
+            echo "TAILSCALE_AUTH_KEY is required for first bootstrap" >&2
+            return 1
+          fi
+          tailscale --socket="$SOCK" up \
+            --hostname="$TAILSCALE_HOSTNAME" \
+            --accept-routes
         fi
-        tailscale --socket="$SOCK" up \
-          --hostname="$TAILSCALE_HOSTNAME" \
-          --accept-routes
+      }
+
+      wait_tailscale_online() {
+        for _ in $(seq 1 20); do
+          if tailscale --socket="$SOCK" status --json 2>/dev/null | jq -e '.Self.Online == true' >/dev/null 2>&1; then
+            return 0
+          fi
+          sleep 2
+        done
+        return 1
+      }
+
+      TS_ONLINE=0
+      for attempt in $(seq 1 5); do
+        if tailscale_up && wait_tailscale_online; then
+          TS_ONLINE=1
+          break
+        fi
+        echo "tailscale up attempt $attempt/5 did not reach online state; retrying..."
+        sleep 3
+      done
+      if [ "$TS_ONLINE" != "1" ]; then
+        echo "WARNING: Tailscale did not reach online state during bootstrap." >&2
       fi
 
       tailscale --socket="$SOCK" serve reset || true
@@ -297,8 +322,50 @@ write_files:
       systemctl enable openclaw
       systemctl start openclaw
 
+      wait_openclaw_healthy() {
+        for attempt in $(seq 1 60); do
+          OPENCLAW_CONTAINER_ID=$(docker compose -f /opt/openclaw/docker-compose.yml ps -q openclaw || true)
+          if [ -n "$OPENCLAW_CONTAINER_ID" ]; then
+            HEALTH_STATUS=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$OPENCLAW_CONTAINER_ID" 2>/dev/null || echo "")
+            if [ "$HEALTH_STATUS" = "healthy" ] || [ "$HEALTH_STATUS" = "running" ]; then
+              return 0
+            fi
+          fi
+          sleep 3
+        done
+        return 1
+      }
+
+      # 5. Enable bundled channel plugins for web/CLI channel flows
+      echo "[plugins] Enabling bundled channel plugins (whatsapp, telegram)..."
+      PLUGINS_RESTART_NEEDED=0
+      if ! wait_openclaw_healthy; then
+        echo "[plugins] WARNING: OpenClaw did not become ready in time; skipping plugin enable."
+      fi
+      for plugin in whatsapp telegram; do
+        PLUGIN_ENABLE_LOG="/tmp/openclaw-plugin-enable-$plugin.log"
+        ENABLE_OK=0
+        for attempt in $(seq 1 10); do
+          if docker exec openclaw-openclaw-1 openclaw plugins enable "$plugin" >"$PLUGIN_ENABLE_LOG" 2>&1; then
+            echo "[plugins] $plugin plugin enabled."
+            ENABLE_OK=1
+            PLUGINS_RESTART_NEEDED=1
+            break
+          fi
+          sleep 3
+        done
+        if [ "$ENABLE_OK" != "1" ]; then
+          echo "[plugins] WARNING: Failed to enable $plugin plugin after retries."
+          tail -n 5 "$PLUGIN_ENABLE_LOG" || true
+        fi
+      done
+      if [ "$PLUGINS_RESTART_NEEDED" = "1" ]; then
+        systemctl restart openclaw
+        wait_openclaw_healthy || echo "[plugins] WARNING: OpenClaw restart after plugin enable did not become healthy in time."
+      fi
+
 %{ if tailscale_enabled }
-      # 5. Read Tailscale sidecar status and Serve URL
+      # 6. Read Tailscale sidecar status and Serve URL
       echo "[tailscale] Waiting for Tailscale sidecar..."
       TS_CONTAINER_ID=""
       for attempt in $(seq 1 40); do
