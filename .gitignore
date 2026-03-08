@@ -3,6 +3,11 @@
 *.tfstate.backup
 *.tfstate.*.backup
 
+# Terraform plans — can embed full configuration and plaintext secrets
+tfplan
+*.tfplan
+*.tfplan.*
+
 # Terraform working directory
 .terraform/
 .terraform.lock.hcl
