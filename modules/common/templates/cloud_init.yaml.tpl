@@ -74,6 +74,7 @@ write_files:
       OPENAI_API_KEY=${openai_api_key}
       GROQ_API_KEY=${groq_api_key}
       GEMINI_API_KEY=${gemini_api_key}
+      OPENCLAW_GATEWAY_TOKEN=${gateway_token}
 %{ if tailscale_enabled }
       OPENCLAW_GATEWAY_BIND=loopback
 %{ else }
@@ -315,10 +316,10 @@ write_files:
         ORIGINS_JSON=$(printf '%s\n' "https://${project_name}" "https://$TAILSCALE_DNS" "http://127.0.0.1:18789" "http://localhost:18789" | sed '/^https:\/\/$/d' | awk '!seen[$0]++' | jq -R . | jq -s .)
         if [ -f "$OPENCLAW_CONFIG" ]; then
           TMP_CONFIG=$(mktemp)
-          if jq --argjson origins "$ORIGINS_JSON" '.gateway = (.gateway // {}) | .gateway.controlUi = ((.gateway.controlUi // {}) + { allowedOrigins: $origins })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
+          if jq --argjson origins "$ORIGINS_JSON" --arg gateway_token "${gateway_token}" '.gateway = (.gateway // {}) | .gateway.auth = ((.gateway.auth // {}) + { mode: "token", token: $gateway_token }) | .gateway.controlUi = ((.gateway.controlUi // {}) + { allowedOrigins: $origins })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
             mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
             chown 1000:1000 "$OPENCLAW_CONFIG" || true
-            echo "[openclaw] Updated gateway.controlUi.allowedOrigins."
+            echo "[openclaw] Updated gateway.auth.token and gateway.controlUi.allowedOrigins."
             systemctl restart openclaw
           else
             rm -f "$TMP_CONFIG"

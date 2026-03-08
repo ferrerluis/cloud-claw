@@ -27,6 +27,7 @@ On first boot, `cloud-init` runs a script that:
 3. Writes `/opt/openclaw/docker-compose.yml` and `/opt/openclaw/.env`
 4. Creates and starts a `systemd` service (`openclaw`) that runs `docker compose up`
 5. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
+6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste
 
 OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — never publicly exposed.
 
@@ -75,6 +76,8 @@ instance_public_ip     = "1.2.3.4"
 ssh_command            = "ssh admin@1.2.3.4"
 tailscale_note         = "Tailscale is enabled. Sidecar device 'openclaw' will appear in your admin console..."
 dashboard_url          = "https://openclaw  (via Tailscale Serve)"
+dashboard_url_with_token_import = "https://openclaw/#token=<gateway-token>"
+pair_latest_command    = "ssh admin@1.2.3.4 'docker exec openclaw-openclaw-1 openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789'"
 bootstrap_log_command  = "ssh admin@1.2.3.4 'tail -f /var/log/openclaw-bootstrap.log'"
 ```
 
@@ -87,8 +90,10 @@ Run `bootstrap_log_command` to watch the install progress in real time.
 ### With Tailscale (recommended)
 
 1. Connect your laptop/desktop to the same Tailscale network (install the Tailscale client).
-2. Once the server finishes bootstrapping (~2-3 min), open **https://openclaw** in your browser.
-3. You'll be greeted by the OpenClaw setup screen — configure your preferred LLM provider.
+2. Once the server finishes bootstrapping (~2-3 min), open `dashboard_url_with_token_import` from Terraform output for first-time login.
+3. If prompted for pairing approval, run `pair_latest_command` once.
+4. Afterwards, you can use **https://openclaw** directly.
+5. You'll be greeted by the OpenClaw setup screen — configure your preferred LLM provider.
 
 ### Without Tailscale (SSH tunnel)
 
@@ -176,6 +181,7 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `groq_api_key` | `""` | Groq API key |
 | `gemini_api_key` | `""` | Google Gemini API key |
 | `openclaw_version` | `"latest"` | Docker image tag |
+| `gateway_token` | `""` | Optional fixed gateway token (blank = Terraform auto-generates) |
 | `tailscale_enabled` | `true` | Install and configure Tailscale |
 | `tailscale_auth_key` | `""` | Tailscale auth key |
 
@@ -189,6 +195,9 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `ssh_command` | Full SSH command |
 | `tailscale_note` | Tailscale access instructions |
 | `dashboard_url` | URL to reach the OpenClaw UI |
+| `dashboard_url_with_token_import` | First-time URL that auto-imports token into Control UI |
+| `gateway_token` | Gateway token value |
+| `pair_latest_command` | One-shot command to approve the latest pending device pairing |
 | `bootstrap_log_command` | Tail the bootstrap log remotely |
 | `provider_used` | Which provider was deployed |
 
@@ -200,6 +209,7 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 - **Tailscale** is the recommended access path; when enabled, a Docker sidecar publishes HTTPS access with `tailscale serve`.
 - The Tailscale sidecar requires `/dev/net/tun` and `NET_ADMIN` / `NET_RAW` capabilities.
 - Only SSH (port 22) and Tailscale UDP (41641) are opened in firewall rules.
+- `gateway_token` and `dashboard_url_with_token_import` outputs contain credentials. Treat Terraform output/state as sensitive.
 - **API keys** are injected into user_data / cloud-init. On AWS, user_data is accessible via the instance metadata API (IMDSv2 only, 1-hop limit enforced). For stricter security, use AWS Secrets Manager and fetch keys at boot instead.
 - **SSH CIDR**: set `allowed_ssh_cidr` to your own IP (`curl ifconfig.me`) — don't leave it `0.0.0.0/0` in production.
 - **EBS encryption** is enabled on both the root and data volumes.

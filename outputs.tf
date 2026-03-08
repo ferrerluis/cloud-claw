@@ -25,7 +25,7 @@ output "ssh_command" {
 output "tailscale_note" {
   description = "Tailscale access information."
   value = var.tailscale_enabled ? (
-    "Tailscale is enabled. Once the instance boots (~2 min), the sidecar device '${var.project_name}' should appear in your Tailscale admin console. Dashboard is published with Tailscale Serve: https://${var.project_name}"
+    "Tailscale is enabled. Once the instance boots (~2 min), the sidecar device '${var.project_name}' should appear in your Tailscale admin console. Dashboard is published with Tailscale Serve: https://${var.project_name} (or use dashboard_url_with_token_import for first-time auto-auth)."
     ) : (
     "Tailscale is DISABLED. Use an SSH tunnel to reach the dashboard: ssh -L 18789:127.0.0.1:18789 ${var.admin_username}@${local.instance_public_ip}  then open http://localhost:18789"
   )
@@ -38,6 +38,25 @@ output "dashboard_url" {
     ) : (
     "http://localhost:18789  (after running the SSH tunnel shown in tailscale_note)"
   )
+}
+
+output "dashboard_url_with_token_import" {
+  description = "First-time login URL that auto-imports the gateway token into Control UI via #token fragment."
+  value = var.tailscale_enabled ? (
+    nonsensitive("https://${var.project_name}/#token=${local.resolved_gateway_token}")
+    ) : (
+    nonsensitive("http://localhost:18789/#token=${local.resolved_gateway_token}  (after running the SSH tunnel shown in tailscale_note)")
+  )
+}
+
+output "gateway_token" {
+  description = "Gateway token used by OpenClaw Control UI and WebSocket auth."
+  value       = nonsensitive(local.resolved_gateway_token)
+}
+
+output "pair_latest_command" {
+  description = "Run after opening dashboard_url_with_token_import to approve the latest pending paired-device request."
+  value       = "ssh ${var.admin_username}@${local.instance_public_ip} 'docker exec openclaw-openclaw-1 openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789'"
 }
 
 output "bootstrap_log_command" {

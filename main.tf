@@ -19,6 +19,15 @@ provider "digitalocean" {
   token = var.do_token != "" ? var.do_token : null
 }
 
+resource "random_password" "gateway_token" {
+  length  = 48
+  special = false
+}
+
+locals {
+  resolved_gateway_token = trimspace(var.gateway_token) != "" ? var.gateway_token : random_password.gateway_token.result
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # AWS deployment (activated when cloud_provider = "aws")
 # ─────────────────────────────────────────────────────────────────────────────
@@ -43,6 +52,7 @@ module "aws" {
   groq_api_key      = var.groq_api_key
   gemini_api_key    = var.gemini_api_key
   openclaw_version  = var.openclaw_version
+  gateway_token     = local.resolved_gateway_token
 
   tailscale_enabled  = var.tailscale_enabled
   tailscale_auth_key = var.tailscale_auth_key
@@ -73,6 +83,7 @@ module "digitalocean" {
   groq_api_key      = var.groq_api_key
   gemini_api_key    = var.gemini_api_key
   openclaw_version  = var.openclaw_version
+  gateway_token     = local.resolved_gateway_token
 
   tailscale_enabled  = var.tailscale_enabled
   tailscale_auth_key = var.tailscale_auth_key

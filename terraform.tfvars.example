@@ -72,6 +72,10 @@ gemini_api_key    = ""                  # e.g. AIzaSy...
 # OpenClaw image tag — pin to a specific version for reproducibility
 openclaw_version = "latest"
 
+# Optional: set a fixed gateway token. Leave blank to auto-generate one that
+# Terraform stores in state and prints in outputs.
+gateway_token = ""
+
 # ── Tailscale ────────────────────────────────────────────────────
 # Strongly recommended: keeps the dashboard off the public internet.
 # Generate an auth key at: https://login.tailscale.com/admin/settings/keys

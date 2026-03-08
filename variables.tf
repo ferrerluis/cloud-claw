@@ -183,6 +183,13 @@ variable "openclaw_version" {
   default     = "latest"
 }
 
+variable "gateway_token" {
+  description = "Gateway token used by the Control UI/WebSocket auth. Leave blank to auto-generate and persist in Terraform state."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # ─────────────────────────────────────────────────────────
 # Tailscale
 # ─────────────────────────────────────────────────────────

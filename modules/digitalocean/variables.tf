@@ -44,3 +44,8 @@ variable "gemini_api_key" {
 }
 
 variable "openclaw_version" { type = string }
+
+variable "gateway_token" {
+  type      = string
+  sensitive = true
+}
