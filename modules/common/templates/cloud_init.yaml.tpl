@@ -1,5 +1,5 @@
 #cloud-config
-# OpenClaw bootstrap — rendered by Terraform's templatefile()
+# OpenClaw bootstrap  rendered by Terraform's templatefile()
 # Provider: ${provider_type}
 
 packages:
@@ -12,7 +12,7 @@ packages:
   - jq
 
 write_files:
-  # ── OpenClaw Docker Compose ────────────────────────────────────────────────
+  #  OpenClaw Docker Compose 
   - path: /opt/openclaw/docker-compose.yml
     permissions: "0644"
     owner: root:root
@@ -28,8 +28,27 @@ write_files:
           volumes:
             - /opt/openclaw/data:/home/node/.openclaw
             - /opt/openclaw/workspace:/home/node/openclaw/workspace
+%{~ if tailscale_enabled ~}
 
-      # ── Optional: Google Drive sync via rclone ─────────────────────────────
+        tailscale:
+          image: tailscale/tailscale:stable
+          restart: unless-stopped
+          network_mode: "service:openclaw"
+          depends_on:
+            - openclaw
+          env_file: .env
+          cap_add:
+            - NET_ADMIN
+            - NET_RAW
+          devices:
+            - /dev/net/tun:/dev/net/tun
+          volumes:
+            - /opt/openclaw/tailscale-state:/var/lib/tailscale
+            - /opt/openclaw/tailscale-bootstrap.sh:/bootstrap.sh:ro
+          command: ["/bin/sh", "/bootstrap.sh"]
+%{~ endif ~}
+
+      #  Optional: Google Drive sync via rclone 
       # Uncomment and configure rclone (https://rclone.org/drive/) to sync
       # the workspace to Google Drive. See README for full instructions.
       #  rclone:
@@ -46,7 +65,7 @@ write_files:
       #      - --transfers=4
       #      - --log-level=INFO
 
-  # ── LLM API keys ──────────────────────────────────────────────────────────
+  #  LLM API keys 
   - path: /opt/openclaw/.env
     permissions: "0600"
     owner: root:root
@@ -55,8 +74,65 @@ write_files:
       OPENAI_API_KEY=${openai_api_key}
       GROQ_API_KEY=${groq_api_key}
       GEMINI_API_KEY=${gemini_api_key}
+%{ if tailscale_enabled }
+      OPENCLAW_GATEWAY_BIND=loopback
+%{ else }
+      OPENCLAW_GATEWAY_BIND=lan
+%{ endif }
+%{ if tailscale_enabled }
+      TAILSCALE_AUTH_KEY=${tailscale_auth_key}
+      TAILSCALE_HOSTNAME=${project_name}
+%{ endif }
 
-  # ── Systemd service ───────────────────────────────────────────────────────
+%{ if tailscale_enabled }
+  - path: /opt/openclaw/tailscale-bootstrap.sh
+    permissions: "0700"
+    owner: root:root
+    content: |
+      #!/bin/sh
+      set -eu
+
+      SOCK=/tmp/tailscaled.sock
+      STATE_FILE=/var/lib/tailscale/tailscaled.state
+
+      mkdir -p /var/lib/tailscale
+      tailscaled --state="$STATE_FILE" --socket="$SOCK" &
+      TS_PID=$!
+
+      for _ in $(seq 1 60); do
+        [ -S "$SOCK" ] && break
+        sleep 1
+      done
+
+      if [ -z "$${TAILSCALE_HOSTNAME:-}" ]; then
+        echo "TAILSCALE_HOSTNAME is required" >&2
+        exit 1
+      fi
+
+      if [ -n "$${TAILSCALE_AUTH_KEY:-}" ]; then
+        # Always prefer authkey when present; state file can exist before first login.
+        tailscale --socket="$SOCK" up \
+          --authkey="$TAILSCALE_AUTH_KEY" \
+          --hostname="$TAILSCALE_HOSTNAME" \
+          --accept-routes
+      else
+        if [ ! -s "$STATE_FILE" ]; then
+          echo "TAILSCALE_AUTH_KEY is required for first bootstrap" >&2
+          exit 1
+        fi
+        tailscale --socket="$SOCK" up \
+          --hostname="$TAILSCALE_HOSTNAME" \
+          --accept-routes
+      fi
+
+      tailscale --socket="$SOCK" serve reset || true
+      tailscale --socket="$SOCK" serve --bg 127.0.0.1:18789
+      tailscale --socket="$SOCK" serve status || true
+
+      wait "$TS_PID"
+%{ endif }
+
+  #  Systemd service 
   - path: /etc/systemd/system/openclaw.service
     permissions: "0644"
     owner: root:root
@@ -80,7 +156,7 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
-  # ── Volume mount script (provider-specific) ────────────────────────────────
+  #  Volume mount script (provider-specific) 
   - path: /root/mount-openclaw-volume.sh
     permissions: "0755"
     owner: root:root
@@ -89,11 +165,11 @@ write_files:
       set -euo pipefail
       exec >> /var/log/openclaw-bootstrap.log 2>&1
 
-      mkdir -p /opt/openclaw/data /opt/openclaw/workspace
+      mkdir -p /opt/openclaw/data /opt/openclaw/workspace /opt/openclaw/tailscale-state
 
 %{~ if provider_type == "aws" ~}
-      # ── AWS: find EBS volume by NVMe serial ───────────────────────────────
-      # t3/m5/c5 (Nitro) rename /dev/xvdf → /dev/nvmeXn1; stable ID = serial
+      #  AWS: find EBS volume by NVMe serial 
+      # t3/m5/c5 (Nitro) rename /dev/xvdf  /dev/nvmeXn1; stable ID = serial
       VOLUME_ID="${ebs_volume_id}"
       SERIAL=$(echo "$VOLUME_ID" | tr -d '-')
 
@@ -107,7 +183,7 @@ write_files:
             break 2
           fi
         done
-        echo "[volume] Attempt $attempt/30 — volume not visible yet, sleeping 5 s..."
+        echo "[volume] Attempt $attempt/30  volume not visible yet, sleeping 5 s..."
         sleep 5
       done
 
@@ -117,14 +193,14 @@ write_files:
       fi
       echo "[volume] Found EBS volume at $DEVICE"
 %{~ else ~}
-      # ── DigitalOcean: find volume by symlink ──────────────────────────────
+      #  DigitalOcean: find volume by symlink 
       VOLUME_NAME="${do_volume_name}"
       DEVICE="/dev/disk/by-id/scsi-0DO_Volume_$VOLUME_NAME"
 
       echo "[volume] Waiting for DO volume $VOLUME_NAME..."
       for attempt in $(seq 1 30); do
         [ -e "$DEVICE" ] && break
-        echo "[volume] Attempt $attempt/30 — symlink not present yet, sleeping 5 s..."
+        echo "[volume] Attempt $attempt/30  symlink not present yet, sleeping 5 s..."
         sleep 5
       done
 
@@ -143,13 +219,13 @@ write_files:
       fi
 %{~ endif ~}
 
-      # ── Format if first use ───────────────────────────────────────────────
+      #  Format if first use 
       if ! blkid "$DEVICE" > /dev/null 2>&1; then
         echo "[volume] Formatting $DEVICE as ext4..."
         mkfs.ext4 -L openclaw-data -F "$DEVICE"
       fi
 
-      # ── Mount by UUID for stable fstab entry ─────────────────────────────
+      #  Mount by UUID for stable fstab entry 
       UUID=$(blkid -s UUID -o value "$DEVICE")
       echo "[volume] UUID: $UUID"
 
@@ -165,7 +241,7 @@ write_files:
       chown -R 1000:1000 /opt/openclaw/data /opt/openclaw/workspace
       echo "[volume] Mount complete."
 
-  # ── Main bootstrap script ─────────────────────────────────────────────────
+  #  Main bootstrap script 
   - path: /root/install-openclaw.sh
     permissions: "0755"
     owner: root:root
@@ -175,14 +251,14 @@ write_files:
       exec > >(tee -a /var/log/openclaw-bootstrap.log) 2>&1
 
       echo "========================================================"
-      echo " OpenClaw Bootstrap — $(date)"
+      echo " OpenClaw Bootstrap  $(date)"
       echo "========================================================"
 
       # 1. Ensure standardized admin user exists on both providers
       ADMIN_USER="${admin_username}"
       echo "[admin] Ensuring admin user '$ADMIN_USER' exists..."
       if ! id "$ADMIN_USER" >/dev/null 2>&1; then
-        useradd --create-home --shell /bin/bash --groups sudo "$ADMIN_USER"
+        useradd --create-home --shell /bin/bash --groups sudo --no-user-group "$ADMIN_USER"
       fi
 
       ADMIN_HOME="$(getent passwd "$ADMIN_USER" | cut -d: -f6)"
@@ -210,36 +286,64 @@ write_files:
       usermod -aG docker "$ADMIN_USER"
       echo "[docker] Done."
 
-%{~ if tailscale_enabled ~}
-      # 3. Tailscale
-      echo "[tailscale] Installing Tailscale..."
-      curl -fsSL https://tailscale.com/install.sh | sh
-      tailscale up \
-        --authkey="${tailscale_auth_key}" \
-        --hostname="${project_name}" \
-        --accept-routes
-      echo "[tailscale] Up. Hostname: ${project_name}"
-      TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "pending")
-      echo "[tailscale] IP: $TAILSCALE_IP"
-%{~ endif ~}
-
-      # 4. Persistent volume
+      # 3. Persistent volume
       echo "[volume] Mounting persistent storage..."
       /root/mount-openclaw-volume.sh
 
-      # 5. Start OpenClaw
+      # 4. Start OpenClaw
       echo "[openclaw] Enabling and starting OpenClaw service..."
       systemctl daemon-reload
       systemctl enable openclaw
       systemctl start openclaw
 
+%{ if tailscale_enabled }
+      # 5. Read Tailscale sidecar status and Serve URL
+      echo "[tailscale] Waiting for Tailscale sidecar..."
+      TS_CONTAINER_ID=""
+      for attempt in $(seq 1 40); do
+        TS_CONTAINER_ID=$(docker compose -f /opt/openclaw/docker-compose.yml ps -q tailscale || true)
+        if [ -n "$TS_CONTAINER_ID" ] && docker exec "$TS_CONTAINER_ID" tailscale --socket=/tmp/tailscaled.sock status --json 2>/dev/null | jq -e '.Self.Online == true' >/dev/null 2>&1; then
+          break
+        fi
+        sleep 3
+      done
+
+      if [ -n "$TS_CONTAINER_ID" ]; then
+        TAILSCALE_DNS=$(docker exec "$TS_CONTAINER_ID" tailscale --socket=/tmp/tailscaled.sock status --json 2>/dev/null | jq -r '.Self.DNSName // empty' || true)
+        TAILSCALE_DNS="$${TAILSCALE_DNS%.}"
+        OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
+        ORIGINS_JSON=$(printf '%s\n' "https://${project_name}" "https://$TAILSCALE_DNS" "http://127.0.0.1:18789" "http://localhost:18789" | sed '/^https:\/\/$/d' | awk '!seen[$0]++' | jq -R . | jq -s .)
+        if [ -f "$OPENCLAW_CONFIG" ]; then
+          TMP_CONFIG=$(mktemp)
+          if jq --argjson origins "$ORIGINS_JSON" '.gateway = (.gateway // {}) | .gateway.controlUi = ((.gateway.controlUi // {}) + { allowedOrigins: $origins })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
+            mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
+            chown 1000:1000 "$OPENCLAW_CONFIG" || true
+            echo "[openclaw] Updated gateway.controlUi.allowedOrigins."
+            systemctl restart openclaw
+          else
+            rm -f "$TMP_CONFIG"
+            echo "[openclaw] WARNING: Failed to update gateway.controlUi.allowedOrigins."
+          fi
+        else
+          echo "[openclaw] WARNING: $OPENCLAW_CONFIG not found; skipped allowedOrigins update."
+        fi
+        if [ -n "$TAILSCALE_DNS" ]; then
+          echo "[tailscale] Serve URL: https://$TAILSCALE_DNS"
+        else
+          echo "[tailscale] Sidecar started. Check logs with: docker compose -f /opt/openclaw/docker-compose.yml logs tailscale"
+        fi
+      else
+        echo "[tailscale] WARNING: Tailscale sidecar container not detected."
+      fi
+%{ endif }
+
       echo "========================================================"
-      echo " Bootstrap complete — $(date)"
-%{~ if tailscale_enabled ~}
-      echo " Dashboard: http://${project_name}:18789  (via Tailscale)"
-%{~ else ~}
+      echo " Bootstrap complete  $(date)"
+%{ if tailscale_enabled }
+      echo " Dashboard: https://${project_name}  (via Tailscale Serve sidecar)"
+%{ else }
       echo " Dashboard: ssh -L 18789:127.0.0.1:18789 ${admin_username}@<IP>"
-%{~ endif ~}
+%{ endif }
       echo " Logs:      journalctl -u openclaw -f"
       echo "========================================================"
 

@@ -1,6 +1,6 @@
-variable "project_name"    { type = string }
-variable "admin_username"  { type = string }
-variable "do_region"       { type = string }
+variable "project_name" { type = string }
+variable "admin_username" { type = string }
+variable "do_region" { type = string }
 variable "do_droplet_size" { type = string }
 variable "do_disk_size_gb" { type = number }
 
@@ -14,8 +14,8 @@ variable "do_existing_volume_name" {
   default = ""
 }
 
-variable "ssh_public_key"    { type = string }
-variable "allowed_ssh_cidr"  { type = string }
+variable "ssh_public_key" { type = string }
+variable "allowed_ssh_cidr" { type = string }
 variable "tailscale_enabled" { type = bool }
 
 variable "tailscale_auth_key" {

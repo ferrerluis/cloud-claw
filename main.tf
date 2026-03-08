@@ -4,14 +4,15 @@
 
 provider "aws" {
   region     = var.aws_region
-  access_key = var.aws_access_key != "" ? var.aws_access_key : null
-  secret_key = var.aws_secret_key != "" ? var.aws_secret_key : null
+  access_key = var.cloud_provider == "aws" ? (var.aws_access_key != "" ? var.aws_access_key : null) : "mock_access_key"
+  secret_key = var.cloud_provider == "aws" ? (var.aws_secret_key != "" ? var.aws_secret_key : null) : "mock_secret_key"
 
   # These skip flags prevent hard validation failures when AWS credentials are
   # not supplied (i.e. when cloud_provider = "digitalocean").
   skip_credentials_validation = true
   skip_requesting_account_id  = true
   skip_metadata_api_check     = true
+  skip_region_validation      = true
 }
 
 provider "digitalocean" {

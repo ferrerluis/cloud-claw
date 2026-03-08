@@ -23,10 +23,10 @@ All sizes are defaults and are adjustable through variables.
 On first boot, `cloud-init` runs a script that:
 
 1. Installs Docker and Docker Compose
-2. Installs and authenticates Tailscale (if enabled)
-3. Locates, formats (first time), and mounts the persistent data volume
-4. Writes `/opt/openclaw/docker-compose.yml` and `/opt/openclaw/.env`
-5. Creates and starts a `systemd` service (`openclaw`) that runs `docker compose up`
+2. Locates, formats (first time), and mounts the persistent data volume
+3. Writes `/opt/openclaw/docker-compose.yml` and `/opt/openclaw/.env`
+4. Creates and starts a `systemd` service (`openclaw`) that runs `docker compose up`
+5. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
 
 OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — never publicly exposed.
 
@@ -73,8 +73,8 @@ After `apply` completes, Terraform prints:
 ```
 instance_public_ip     = "1.2.3.4"
 ssh_command            = "ssh admin@1.2.3.4"
-tailscale_note         = "Tailscale is enabled. Device 'openclaw' will appear in your admin console..."
-dashboard_url          = "http://openclaw:18789  (via Tailscale)"
+tailscale_note         = "Tailscale is enabled. Sidecar device 'openclaw' will appear in your admin console..."
+dashboard_url          = "https://openclaw  (via Tailscale Serve)"
 bootstrap_log_command  = "ssh admin@1.2.3.4 'tail -f /var/log/openclaw-bootstrap.log'"
 ```
 
@@ -87,7 +87,7 @@ Run `bootstrap_log_command` to watch the install progress in real time.
 ### With Tailscale (recommended)
 
 1. Connect your laptop/desktop to the same Tailscale network (install the Tailscale client).
-2. Once the server finishes bootstrapping (~2-3 min), open **http://openclaw:18789** in your browser.
+2. Once the server finishes bootstrapping (~2-3 min), open **https://openclaw** in your browser.
 3. You'll be greeted by the OpenClaw setup screen — configure your preferred LLM provider.
 
 ### Without Tailscale (SSH tunnel)
@@ -197,7 +197,9 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 ## Security notes
 
 - **No public ports** for the OpenClaw dashboard — it binds to `127.0.0.1:18789` only.
-- **Tailscale** is the recommended access path; when enabled, only SSH (port 22) and Tailscale UDP (41641) are in the firewall.
+- **Tailscale** is the recommended access path; when enabled, a Docker sidecar publishes HTTPS access with `tailscale serve`.
+- The Tailscale sidecar requires `/dev/net/tun` and `NET_ADMIN` / `NET_RAW` capabilities.
+- Only SSH (port 22) and Tailscale UDP (41641) are opened in firewall rules.
 - **API keys** are injected into user_data / cloud-init. On AWS, user_data is accessible via the instance metadata API (IMDSv2 only, 1-hop limit enforced). For stricter security, use AWS Secrets Manager and fetch keys at boot instead.
 - **SSH CIDR**: set `allowed_ssh_cidr` to your own IP (`curl ifconfig.me`) — don't leave it `0.0.0.0/0` in production.
 - **EBS encryption** is enabled on both the root and data volumes.

@@ -26,19 +26,19 @@ locals {
   )
 
   cloud_init = templatefile("${path.module}/../common/templates/cloud_init.yaml.tpl", {
-    provider_type      = "digitalocean"
-    project_name       = var.project_name
-    admin_username     = var.admin_username
+    provider_type        = "digitalocean"
+    project_name         = var.project_name
+    admin_username       = var.admin_username
     admin_ssh_public_key = var.ssh_public_key
-    ebs_volume_id      = ""
-    do_volume_name     = local.do_volume_name
-    anthropic_api_key  = var.anthropic_api_key
-    openai_api_key     = var.openai_api_key
-    groq_api_key       = var.groq_api_key
-    gemini_api_key     = var.gemini_api_key
-    tailscale_enabled  = var.tailscale_enabled
-    tailscale_auth_key = var.tailscale_auth_key
-    openclaw_version   = var.openclaw_version
+    ebs_volume_id        = ""
+    do_volume_name       = local.do_volume_name
+    anthropic_api_key    = var.anthropic_api_key
+    openai_api_key       = var.openai_api_key
+    groq_api_key         = var.groq_api_key
+    gemini_api_key       = var.gemini_api_key
+    tailscale_enabled    = var.tailscale_enabled
+    tailscale_auth_key   = var.tailscale_auth_key
+    openclaw_version     = var.openclaw_version
   })
 }
 
