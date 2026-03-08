@@ -128,14 +128,6 @@ variable "do_existing_volume_name" {
   description = "Name of the existing DigitalOcean volume (required when do_existing_volume_id is set, used to derive the device path)."
   type        = string
   default     = ""
-
-  validation {
-    condition = (
-      trimspace(var.do_existing_volume_name) == "" ||
-      trimspace(var.do_existing_volume_id) != ""
-    )
-    error_message = "do_existing_volume_name can only be set when do_existing_volume_id is also set."
-  }
 }
 
 # ─────────────────────────────────────────────────────────
