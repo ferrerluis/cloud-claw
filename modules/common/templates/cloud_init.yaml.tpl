@@ -183,6 +183,55 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
+%{ if tailscale_enabled }
+  #  Tailscale watchdog (auto-heal sidecar route/online regressions) 
+  - path: /usr/local/bin/openclaw-tailscale-watchdog
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      TS_CONTAINER="openclaw-tailscale-1"
+      if ! docker ps --format '{{.Names}}' | grep -qx "$TS_CONTAINER"; then
+        exit 0
+      fi
+
+      ONLINE=$(docker exec "$TS_CONTAINER" tailscale --socket=/tmp/tailscaled.sock status --json 2>/dev/null | jq -r '.Self.Online // false' || echo false)
+      ROUTE_LINES=$(docker exec "$TS_CONTAINER" sh -lc 'cat /proc/net/route | wc -l' 2>/dev/null || echo 0)
+      if [ "$ONLINE" != "true" ] || [ "$ROUTE_LINES" -le 1 ]; then
+        logger -t openclaw-tailscale-watchdog "restarting $TS_CONTAINER (online=$ONLINE routes=$ROUTE_LINES)"
+        docker restart "$TS_CONTAINER" >/dev/null
+      fi
+
+  - path: /etc/systemd/system/openclaw-tailscale-watchdog.service
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      Description=OpenClaw Tailscale watchdog
+      After=docker.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/openclaw-tailscale-watchdog
+
+  - path: /etc/systemd/system/openclaw-tailscale-watchdog.timer
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Run OpenClaw Tailscale watchdog every minute
+
+      [Timer]
+      OnBootSec=45s
+      OnUnitActiveSec=60s
+      Unit=openclaw-tailscale-watchdog.service
+
+      [Install]
+      WantedBy=timers.target
+%{ endif }
+
   #  Volume mount script (provider-specific) 
   - path: /root/mount-openclaw-volume.sh
     permissions: "0755"
@@ -321,6 +370,9 @@ write_files:
       echo "[openclaw] Enabling and starting OpenClaw service..."
       systemctl daemon-reload
       systemctl enable openclaw
+%{ if tailscale_enabled }
+      systemctl enable --now openclaw-tailscale-watchdog.timer
+%{ endif }
       systemctl start openclaw
 
       wait_openclaw_healthy() {

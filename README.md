@@ -26,7 +26,7 @@ On first boot, `cloud-init` runs a script that:
 2. Locates, formats (first time), and mounts the persistent data volume
 3. Writes `/opt/openclaw/docker-compose.yml` and `/opt/openclaw/.env`
 4. Creates and starts a `systemd` service (`openclaw`) that runs `docker compose up`
-5. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
+5. If enabled, starts a Tailscale sidecar container (shared network namespace with OpenClaw) that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
 6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste
 7. Enables bundled `whatsapp` and `telegram` channel plugins
 8. If `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
