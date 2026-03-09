@@ -385,7 +385,7 @@ write_files:
         TELEGRAM_TOKEN=$(env_value TELEGRAM_BOT_TOKEN)
         if [ -f "$OPENCLAW_CONFIG" ]; then
           TMP_CONFIG=$(mktemp)
-          if jq --arg token "$TELEGRAM_TOKEN" --argjson allow_from "$TELEGRAM_ALLOW_FROM_JSON" '.channels = (.channels // {}) | .channels.telegram = ((.channels.telegram // {}) + { enabled: true, botToken: $token }) | if (($allow_from | type) == "array" and ($allow_from | length) > 0) then .channels.telegram.allowFrom = $allow_from else . end' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
+          if jq --arg token "$TELEGRAM_TOKEN" --argjson allow_from "$TELEGRAM_ALLOW_FROM_JSON" '.channels = (.channels // {}) | .channels.telegram = ((.channels.telegram // {}) + { enabled: true, botToken: $token, streaming: "off" }) | if (($allow_from | type) == "array" and ($allow_from | length) > 0) then .channels.telegram.allowFrom = $allow_from else . end' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
             if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
               mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
               chown 1000:1000 "$OPENCLAW_CONFIG" || true
@@ -410,7 +410,31 @@ write_files:
         fi
       fi
 
-      # 7. Configure model defaults/fallbacks from available API keys
+      # 7. Configure context pruning defaults to prevent oversized sessions
+      echo "[pruning] Configuring agents.defaults.contextPruning..."
+      OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
+      if [ -f "$OPENCLAW_CONFIG" ]; then
+        TMP_CONFIG=$(mktemp)
+        if jq '.agents = (.agents // {}) | .agents.defaults = ((.agents.defaults // {}) + { contextPruning: { mode: "cache-ttl", ttl: "5m", keepLastAssistants: 3, softTrimRatio: 0.3, hardClearRatio: 0.5, minPrunableToolChars: 50000, softTrim: { maxChars: 4000, headChars: 1500, tailChars: 1500 }, hardClear: { enabled: true, placeholder: "[Old tool result content cleared]" } } })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
+          if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
+            mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
+            chown 1000:1000 "$OPENCLAW_CONFIG" || true
+            echo "[pruning] Context pruning config updated."
+            systemctl restart openclaw
+            wait_openclaw_healthy || echo "[pruning] WARNING: OpenClaw restart after pruning config did not become healthy in time."
+          else
+            rm -f "$TMP_CONFIG"
+            echo "[pruning] Context pruning config already up to date."
+          fi
+        else
+          rm -f "$TMP_CONFIG"
+          echo "[pruning] WARNING: Failed to update context pruning config."
+        fi
+      else
+        echo "[pruning] WARNING: $OPENCLAW_CONFIG not found; skipped context pruning setup."
+      fi
+
+      # 8. Configure model defaults/fallbacks from available API keys
       echo "[models] Configuring model defaults and fallbacks..."
       OPENCLAW_ENV_FILE="/opt/openclaw/.env"
       model_exists() {
@@ -462,7 +486,7 @@ write_files:
       fi
 
 %{ if tailscale_enabled }
-      # 8. Read Tailscale sidecar status and Serve URL
+      # 9. Read Tailscale sidecar status and Serve URL
       echo "[tailscale] Waiting for Tailscale sidecar..."
       TS_CONTAINER_ID=""
       for attempt in $(seq 1 40); do

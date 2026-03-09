@@ -29,9 +29,10 @@ On first boot, `cloud-init` runs a script that:
 5. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
 6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste
 7. Enables bundled `whatsapp` and `telegram` channel plugins
-8. If `telegram_bot_token` is set, preconfigures `channels.telegram.botToken` and enables Telegram channel config
+8. If `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
    - If `telegram_allow_from` is non-empty, writes `channels.telegram.allowFrom` with those pre-approved user IDs
-9. If `GROQ_API_KEY` is set, configures model routing defaults:
+9. Sets `agents.defaults.contextPruning` to `cache-ttl` defaults to reduce oversized tool/session context on long-running chats
+10. If `GROQ_API_KEY` is set, configures model routing defaults:
    - Primary: `groq/meta-llama/llama-4-maverick-17b-128e-instruct`
    - Fallbacks (when provider key is present): GPT 5.3 Codex (`openai-codex`), Gemini 3 Pro
 
