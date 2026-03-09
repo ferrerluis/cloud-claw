@@ -29,6 +29,10 @@ On first boot, `cloud-init` runs a script that:
 5. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
 6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste
 7. Enables bundled `whatsapp` and `telegram` channel plugins
+8. If `telegram_bot_token` is set, preconfigures `channels.telegram.botToken` and enables Telegram channel config
+9. If `GROQ_API_KEY` is set, configures model routing defaults:
+   - Primary: `groq/meta-llama/llama-4-maverick-17b-128e-instruct`
+   - Fallbacks (when provider key is present): GPT 5.3 Codex (`openai-codex`), Gemini 3 Pro
 
 OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — never publicly exposed.
 
@@ -95,7 +99,7 @@ Run `bootstrap_log_command` to watch the install progress in real time.
 2. Once the server finishes bootstrapping (~2-3 min), open `dashboard_url_with_token_import` from Terraform output for first-time login.
 3. If prompted for pairing approval, run `pair_latest_command` once.
 4. Afterwards, you can use **https://openclaw** directly.
-5. You'll be greeted by the OpenClaw setup screen — configure your preferred LLM provider.
+5. Model defaults are pre-seeded when matching API keys are present. If you include Codex fallback, complete one-time `openai-codex` auth to make that fallback usable.
 
 ### Without Tailscale (SSH tunnel)
 
@@ -182,6 +186,7 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `openai_api_key` | `""` | OpenAI API key |
 | `groq_api_key` | `""` | Groq API key |
 | `gemini_api_key` | `""` | Google Gemini API key |
+| `telegram_bot_token` | `""` | Optional Telegram BotFather token to preconfigure `channels.telegram.botToken` |
 | `openclaw_version` | `"latest"` | Docker image tag |
 | `gateway_token` | `""` | Optional fixed gateway token (blank = Terraform auto-generates) |
 | `tailscale_enabled` | `true` | Install and configure Tailscale |

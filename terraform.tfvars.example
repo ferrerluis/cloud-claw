@@ -69,6 +69,9 @@ openai_api_key    = "sk-..."            # GPT-4o, o3, etc.
 groq_api_key      = ""                  # e.g. gsk_...  (Llama, Mixtral via Groq)
 gemini_api_key    = ""                  # e.g. AIzaSy...
 
+# Optional: Telegram bot token from BotFather to preconfigure channels.telegram.botToken at bootstrap.
+telegram_bot_token = ""                 # e.g. 123456789:AA...
+
 # OpenClaw image tag — pin to a specific version for reproducibility
 openclaw_version = "latest"
 

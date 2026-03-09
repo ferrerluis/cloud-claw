@@ -36,6 +36,7 @@ locals {
     openai_api_key       = var.openai_api_key
     groq_api_key         = var.groq_api_key
     gemini_api_key       = var.gemini_api_key
+    telegram_bot_token   = var.telegram_bot_token
     tailscale_enabled    = var.tailscale_enabled
     tailscale_auth_key   = var.tailscale_auth_key
     openclaw_version     = var.openclaw_version

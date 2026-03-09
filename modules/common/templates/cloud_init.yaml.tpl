@@ -74,6 +74,7 @@ write_files:
       OPENAI_API_KEY=${openai_api_key}
       GROQ_API_KEY=${groq_api_key}
       GEMINI_API_KEY=${gemini_api_key}
+      TELEGRAM_BOT_TOKEN=${telegram_bot_token}
       OPENCLAW_GATEWAY_TOKEN=${gateway_token}
 %{ if tailscale_enabled }
       OPENCLAW_GATEWAY_BIND=loopback
@@ -364,8 +365,100 @@ write_files:
         wait_openclaw_healthy || echo "[plugins] WARNING: OpenClaw restart after plugin enable did not become healthy in time."
       fi
 
+      OPENCLAW_ENV_FILE="/opt/openclaw/.env"
+      env_value() {
+        local key="$1"
+        sed -n "s/^$key=//p" "$OPENCLAW_ENV_FILE" | tail -n 1 || true
+      }
+      has_env_key() {
+        local key="$1"
+        local value
+        value=$(env_value "$key")
+        [ -n "$value" ]
+      }
+
+      # 6. Preconfigure Telegram bot token (optional)
+      if has_env_key TELEGRAM_BOT_TOKEN; then
+        echo "[telegram] Configuring channels.telegram.botToken..."
+        OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
+        TELEGRAM_TOKEN=$(env_value TELEGRAM_BOT_TOKEN)
+        if [ -f "$OPENCLAW_CONFIG" ]; then
+          TMP_CONFIG=$(mktemp)
+          if jq --arg token "$TELEGRAM_TOKEN" '.channels = (.channels // {}) | .channels.telegram = ((.channels.telegram // {}) + { enabled: true, botToken: $token })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
+            if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
+              mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
+              chown 1000:1000 "$OPENCLAW_CONFIG" || true
+              echo "[telegram] Telegram channel config updated."
+              systemctl restart openclaw
+              wait_openclaw_healthy || echo "[telegram] WARNING: OpenClaw restart after Telegram config did not become healthy in time."
+            else
+              rm -f "$TMP_CONFIG"
+              echo "[telegram] Telegram channel config already up to date."
+            fi
+          else
+            rm -f "$TMP_CONFIG"
+            echo "[telegram] WARNING: Failed to update Telegram channel config."
+          fi
+        else
+          echo "[telegram] WARNING: $OPENCLAW_CONFIG not found; skipped Telegram setup."
+        fi
+      else
+        echo "[telegram] No TELEGRAM_BOT_TOKEN provided; skipping Telegram pre-setup."
+      fi
+
+      # 7. Configure model defaults/fallbacks from available API keys
+      echo "[models] Configuring model defaults and fallbacks..."
+      OPENCLAW_ENV_FILE="/opt/openclaw/.env"
+      model_exists() {
+        local model_ref="$1"
+        printf '%s\n' "$MODEL_CATALOG" | grep -Fxq "$model_ref"
+      }
+      add_fallback_model() {
+        local model_ref="$1"
+        if docker exec openclaw-openclaw-1 openclaw models fallbacks add "$model_ref" >/tmp/openclaw-models-fallback-add.log 2>&1; then
+          echo "[models] Added fallback: $model_ref"
+        else
+          echo "[models] WARNING: Failed to add fallback: $model_ref"
+          tail -n 5 /tmp/openclaw-models-fallback-add.log || true
+        fi
+      }
+
+      if wait_openclaw_healthy; then
+        MODEL_CATALOG=$(docker exec openclaw-openclaw-1 openclaw models list --all --plain 2>/dev/null || true)
+        MAVERICK_MODEL="groq/meta-llama/llama-4-maverick-17b-128e-instruct"
+        CODEX_MODEL="openai-codex/gpt-5.3-codex"
+        GEMINI_MODEL="google/gemini-3-pro-preview"
+
+        if has_env_key GROQ_API_KEY && model_exists "$MAVERICK_MODEL"; then
+          if docker exec openclaw-openclaw-1 openclaw models set "$MAVERICK_MODEL" >/tmp/openclaw-models-set.log 2>&1; then
+            echo "[models] Default model set: $MAVERICK_MODEL"
+            if docker exec openclaw-openclaw-1 openclaw models fallbacks clear >/tmp/openclaw-models-fallback-clear.log 2>&1; then
+              echo "[models] Cleared existing fallbacks."
+            else
+              echo "[models] WARNING: Failed to clear existing fallbacks."
+              tail -n 5 /tmp/openclaw-models-fallback-clear.log || true
+            fi
+
+            if has_env_key OPENAI_API_KEY && model_exists "$CODEX_MODEL"; then
+              add_fallback_model "$CODEX_MODEL"
+              echo "[models] NOTE: $CODEX_MODEL requires one-time openai-codex auth to be usable."
+            fi
+            if has_env_key GEMINI_API_KEY && model_exists "$GEMINI_MODEL"; then
+              add_fallback_model "$GEMINI_MODEL"
+            fi
+          else
+            echo "[models] WARNING: Failed to set default model: $MAVERICK_MODEL"
+            tail -n 5 /tmp/openclaw-models-set.log || true
+          fi
+        else
+          echo "[models] Skipped: GROQ_API_KEY missing or Maverick model unavailable in catalog."
+        fi
+      else
+        echo "[models] WARNING: OpenClaw not ready; skipped model configuration."
+      fi
+
 %{ if tailscale_enabled }
-      # 6. Read Tailscale sidecar status and Serve URL
+      # 8. Read Tailscale sidecar status and Serve URL
       echo "[tailscale] Waiting for Tailscale sidecar..."
       TS_CONTAINER_ID=""
       for attempt in $(seq 1 40); do

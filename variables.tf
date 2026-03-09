@@ -177,6 +177,13 @@ variable "gemini_api_key" {
   sensitive   = true
 }
 
+variable "telegram_bot_token" {
+  description = "Telegram BotFather token used to preconfigure channels.telegram.botToken."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "openclaw_version" {
   description = "OpenClaw Docker image tag (e.g. \"latest\" or a pinned version)."
   type        = string
