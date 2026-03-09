@@ -378,13 +378,14 @@ write_files:
       }
 
       # 6. Preconfigure Telegram bot token (optional)
+      TELEGRAM_ALLOW_FROM_JSON='${telegram_allow_from_json}'
       if has_env_key TELEGRAM_BOT_TOKEN; then
         echo "[telegram] Configuring channels.telegram.botToken..."
         OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
         TELEGRAM_TOKEN=$(env_value TELEGRAM_BOT_TOKEN)
         if [ -f "$OPENCLAW_CONFIG" ]; then
           TMP_CONFIG=$(mktemp)
-          if jq --arg token "$TELEGRAM_TOKEN" '.channels = (.channels // {}) | .channels.telegram = ((.channels.telegram // {}) + { enabled: true, botToken: $token })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
+          if jq --arg token "$TELEGRAM_TOKEN" --argjson allow_from "$TELEGRAM_ALLOW_FROM_JSON" '.channels = (.channels // {}) | .channels.telegram = ((.channels.telegram // {}) + { enabled: true, botToken: $token }) | if (($allow_from | type) == "array" and ($allow_from | length) > 0) then .channels.telegram.allowFrom = $allow_from else . end' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
             if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
               mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
               chown 1000:1000 "$OPENCLAW_CONFIG" || true
@@ -404,6 +405,9 @@ write_files:
         fi
       else
         echo "[telegram] No TELEGRAM_BOT_TOKEN provided; skipping Telegram pre-setup."
+        if [ "$TELEGRAM_ALLOW_FROM_JSON" != "[]" ]; then
+          echo "[telegram] NOTE: telegram_allow_from was provided but TELEGRAM_BOT_TOKEN is missing; allowlist was not applied."
+        fi
       fi
 
       # 7. Configure model defaults/fallbacks from available API keys

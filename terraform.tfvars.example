@@ -72,6 +72,12 @@ gemini_api_key    = ""                  # e.g. AIzaSy...
 # Optional: Telegram bot token from BotFather to preconfigure channels.telegram.botToken at bootstrap.
 telegram_bot_token = ""                 # e.g. 123456789:AA...
 
+# Optional: Pre-approved Telegram user IDs (strings) for channels.telegram.allowFrom.
+# Keep dmPolicy="pairing" to require pairing for everyone else.
+telegram_allow_from = [
+  # "1234567890",
+]
+
 # OpenClaw image tag — pin to a specific version for reproducibility
 openclaw_version = "latest"
 

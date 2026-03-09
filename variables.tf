@@ -184,6 +184,12 @@ variable "telegram_bot_token" {
   sensitive   = true
 }
 
+variable "telegram_allow_from" {
+  description = "Optional list of pre-approved Telegram user IDs for DM access (channels.telegram.allowFrom)."
+  type        = list(string)
+  default     = []
+}
+
 variable "openclaw_version" {
   description = "OpenClaw Docker image tag (e.g. \"latest\" or a pinned version)."
   type        = string

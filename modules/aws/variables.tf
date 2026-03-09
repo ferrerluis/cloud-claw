@@ -44,6 +44,10 @@ variable "telegram_bot_token" {
   sensitive = true
 }
 
+variable "telegram_allow_from" {
+  type = list(string)
+}
+
 variable "openclaw_version" { type = string }
 
 variable "gateway_token" {
