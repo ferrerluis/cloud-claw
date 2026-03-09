@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TARGET_IP="$(terraform -chdir="$ROOT_DIR" output -raw instance_public_ip 2>/dev/null || true)"
+
+if [[ -z "$TARGET_IP" ]]; then
+  echo "error: could not read terraform output 'instance_public_ip'" >&2
+  echo "run: terraform apply first" >&2
+  exit 1
+fi
+
+PATTERN="ssh .*${TARGET_IP}"
+MATCHES="$(pgrep -af "$PATTERN" || true)"
+
+if [[ -z "$MATCHES" ]]; then
+  echo "No matching local ssh processes for ${TARGET_IP}."
+  exit 0
+fi
+
+echo "Killing local ssh processes matching ${TARGET_IP}:"
+echo "$MATCHES"
+pkill -f "$PATTERN" || true
+echo "Done."

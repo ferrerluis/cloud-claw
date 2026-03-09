@@ -59,20 +59,24 @@ OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — n
 git clone <this-repo> cloud-claw
 cd cloud-claw
 
-# 2. Create your variables file (never commit this)
+# 2. Create a repo-local SSH keypair (ignored by git)
+bin/cloud-claw-ssh-create
+# Copy the printed public key into terraform.tfvars as ssh_public_key
+
+# 3. Create your variables file (never commit this)
 cp terraform.tfvars.example terraform.tfvars
 $EDITOR terraform.tfvars        # fill in credentials, keys, etc.
 
-# 3. Initialise
+# 4. Initialise
 terraform init
 
-# 4. Preview
+# 5. Preview
 terraform plan
 
-# 5. Deploy
+# 6. Deploy
 terraform apply
 
-# 6. Watch bootstrap (takes ~2-3 min)
+# 7. Watch bootstrap (takes ~2-3 min)
 # The SSH command and log tail command are shown in the outputs.
 ```
 
@@ -81,15 +85,33 @@ After `apply` completes, Terraform prints:
 ```
 instance_public_ip     = "1.2.3.4"
 ssh_command            = "ssh admin@1.2.3.4"
+repo_ssh_command       = "./bin/cloud-claw-ssh"
 tailscale_note         = "Tailscale is enabled. Sidecar device 'openclaw' will appear in your admin console..."
 dashboard_url          = "https://openclaw  (via Tailscale Serve)"
 dashboard_url_with_token_import = "https://openclaw/#token=<gateway-token>"
 pair_latest_command    = "ssh admin@1.2.3.4 'docker exec openclaw-openclaw-1 openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789'"
+repo_pair_latest_command = "./bin/cloud-claw-ssh -- docker exec openclaw-openclaw-1 openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789"
 whatsapp_login_command = "ssh -t admin@1.2.3.4 'sudo docker exec -it openclaw-openclaw-1 openclaw channels login --channel whatsapp --verbose'"
 bootstrap_log_command  = "ssh admin@1.2.3.4 'tail -f /var/log/openclaw-bootstrap.log'"
+repo_bootstrap_log_command = "./bin/cloud-claw-ssh -- tail -f /var/log/openclaw-bootstrap.log"
 ```
 
 Run `bootstrap_log_command` to watch the install progress in real time.
+
+## Repo-local SSH workflow
+
+These helpers keep SSH behavior consistent per clone and avoid editing `~/.ssh/config`.
+
+```bash
+# Connect (host/IP comes from terraform outputs)
+bin/cloud-claw-ssh
+
+# Run remote commands
+bin/cloud-claw-ssh -- tail -f /var/log/openclaw-bootstrap.log
+
+# Kill stale local ssh client processes targeting the current instance
+bin/cloud-claw-ssh-clean
+```
 
 ---
 
@@ -203,13 +225,16 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 |--------|-------------|
 | `instance_public_ip` | Public IP of the server |
 | `ssh_command` | Full SSH command |
+| `repo_ssh_command` | Repo-local SSH wrapper command (`./bin/cloud-claw-ssh`) |
 | `tailscale_note` | Tailscale access instructions |
 | `dashboard_url` | URL to reach the OpenClaw UI |
 | `dashboard_url_with_token_import` | First-time URL that auto-imports token into Control UI |
 | `gateway_token` | Gateway token value |
 | `pair_latest_command` | One-shot command to approve the latest pending device pairing |
+| `repo_pair_latest_command` | Same pairing approval using repo-local SSH wrapper |
 | `whatsapp_login_command` | Interactive QR login command for WhatsApp |
 | `bootstrap_log_command` | Tail the bootstrap log remotely |
+| `repo_bootstrap_log_command` | Tail bootstrap logs using repo-local SSH wrapper |
 | `provider_used` | Which provider was deployed |
 
 ---
@@ -232,7 +257,11 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 
 ```
 cloud-claw/
-├── .gitignore                          # Excludes *.tfvars, .terraform/, state files
+├── .gitignore                          # Excludes *.tfvars, .terraform/, state files, .ssh/
+├── bin/
+│   ├── cloud-claw-ssh                  # Repo-local SSH wrapper (reads terraform outputs)
+│   ├── cloud-claw-ssh-clean            # Kills stale local SSH client processes
+│   └── cloud-claw-ssh-create           # Generates repo-local SSH keypair (default: ./.ssh/id_ed25519_cloud_claw)
 ├── README.md                           # This file
 ├── terraform.tfvars.example            # Template — copy to terraform.tfvars
 ├── versions.tf                         # Provider version constraints

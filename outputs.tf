@@ -22,6 +22,11 @@ output "ssh_command" {
   value       = "ssh ${var.admin_username}@${local.instance_public_ip}"
 }
 
+output "repo_ssh_command" {
+  description = "Repo-local SSH wrapper command (uses ./bin/cloud-claw-ssh and reads host from Terraform outputs)."
+  value       = "./bin/cloud-claw-ssh"
+}
+
 output "tailscale_note" {
   description = "Tailscale access information."
   value = var.tailscale_enabled ? (
@@ -59,6 +64,11 @@ output "pair_latest_command" {
   value       = "ssh ${var.admin_username}@${local.instance_public_ip} 'docker exec openclaw-openclaw-1 openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789'"
 }
 
+output "repo_pair_latest_command" {
+  description = "Repo-local wrapper command to approve the latest pending paired-device request."
+  value       = "./bin/cloud-claw-ssh -- docker exec openclaw-openclaw-1 openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789"
+}
+
 output "whatsapp_login_command" {
   description = "Interactive command to link WhatsApp by scanning QR from your terminal."
   value       = "ssh -t ${var.admin_username}@${local.instance_public_ip} 'sudo docker exec -it openclaw-openclaw-1 openclaw channels login --channel whatsapp --verbose'"
@@ -67,4 +77,9 @@ output "whatsapp_login_command" {
 output "bootstrap_log_command" {
   description = "Command to watch the bootstrap log on the server."
   value       = "ssh ${var.admin_username}@${local.instance_public_ip} 'tail -f /var/log/openclaw-bootstrap.log'"
+}
+
+output "repo_bootstrap_log_command" {
+  description = "Repo-local wrapper command to watch bootstrap logs."
+  value       = "./bin/cloud-claw-ssh -- tail -f /var/log/openclaw-bootstrap.log"
 }
