@@ -389,13 +389,34 @@ write_files:
         return 1
       }
 
-      # 5. Enable bundled channel plugins for web/CLI channel flows
-      echo "[plugins] Enabling bundled channel plugins (whatsapp, telegram)..."
+      # 5. Install/enable required plugins for channel + ACP workflows
+      echo "[plugins] Installing/enabling plugins (acpx, whatsapp, telegram)..."
       PLUGINS_RESTART_NEEDED=0
       if ! wait_openclaw_healthy; then
         echo "[plugins] WARNING: OpenClaw did not become ready in time; skipping plugin enable."
       fi
-      for plugin in whatsapp telegram; do
+      ACPX_INSTALL_LOG="/tmp/openclaw-plugin-install-acpx.log"
+      ACPX_INSTALL_OK=0
+      for attempt in $(seq 1 5); do
+        if docker exec openclaw-openclaw-1 openclaw plugins install acpx >"$ACPX_INSTALL_LOG" 2>&1; then
+          echo "[plugins] acpx plugin installed."
+          ACPX_INSTALL_OK=1
+          PLUGINS_RESTART_NEEDED=1
+          break
+        fi
+        if grep -qi "already installed" "$ACPX_INSTALL_LOG"; then
+          echo "[plugins] acpx plugin already installed."
+          ACPX_INSTALL_OK=1
+          break
+        fi
+        sleep 3
+      done
+      if [ "$ACPX_INSTALL_OK" != "1" ]; then
+        echo "[plugins] WARNING: Failed to install acpx plugin after retries."
+        tail -n 5 "$ACPX_INSTALL_LOG" || true
+      fi
+
+      for plugin in acpx whatsapp telegram; do
         PLUGIN_ENABLE_LOG="/tmp/openclaw-plugin-enable-$plugin.log"
         ENABLE_OK=0
         for attempt in $(seq 1 10); do
@@ -486,7 +507,71 @@ write_files:
         echo "[pruning] WARNING: $OPENCLAW_CONFIG not found; skipped context pruning setup."
       fi
 
-      # 8. Configure model defaults/fallbacks from available API keys
+      # 8. Configure multi-agent + ACP defaults
+      echo "[agents] Configuring session visibility, agent-to-agent policy, and ACP defaults..."
+      OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
+      if [ -f "$OPENCLAW_CONFIG" ]; then
+        TMP_CONFIG=$(mktemp)
+        if jq '
+          def upsert_agent($agent):
+            .agents.list = (
+              (.agents.list // []) as $list
+              | if ($list | map(.id) | index($agent.id)) != null
+                then ($list | map(if .id == $agent.id then (. * $agent) else . end))
+                else ($list + [$agent])
+                end
+            );
+
+          .tools = (.tools // {})
+          | .tools.sessions = ((.tools.sessions // {}) + { visibility: "tree" })
+          | .tools.agentToAgent = ((.tools.agentToAgent // {}) + { enabled: true, allow: ["researcher", "coder"] })
+          | .agents = (.agents // {})
+          | .agents.defaults = (.agents.defaults // {})
+          | .agents.defaults.sandbox = ((.agents.defaults.sandbox // {}) + { sessionToolsVisibility: "spawned" })
+          | .acp = (.acp // {})
+          | .acp.enabled = true
+          | .acp.dispatch = ((.acp.dispatch // {}) + { enabled: true })
+          | .acp.backend = "acpx"
+          | .acp.defaultAgent = "codex"
+          | .acp.allowedAgents = ["codex"]
+          | .plugins = (.plugins // {})
+          | .plugins.entries = (.plugins.entries // {})
+          | .plugins.entries.acpx = ((.plugins.entries.acpx // {}) + { enabled: true })
+          | .plugins.entries.acpx.config = ((.plugins.entries.acpx.config // {}) + { permissionMode: "approve-all", nonInteractivePermissions: "fail" })
+          | upsert_agent({
+              id: "main",
+              subagents: { allowAgents: ["researcher", "coder"] }
+            })
+          | upsert_agent({
+              id: "researcher"
+            })
+          | upsert_agent({
+              id: "coder",
+              runtime: {
+                type: "acp",
+                acp: { agent: "codex", backend: "acpx", mode: "persistent" }
+              }
+            })
+        ' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
+          if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
+            mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
+            chown 1000:1000 "$OPENCLAW_CONFIG" || true
+            echo "[agents] Multi-agent + ACP defaults updated."
+            systemctl restart openclaw
+            wait_openclaw_healthy || echo "[agents] WARNING: OpenClaw restart after ACP defaults did not become healthy in time."
+          else
+            rm -f "$TMP_CONFIG"
+            echo "[agents] Multi-agent + ACP defaults already up to date."
+          fi
+        else
+          rm -f "$TMP_CONFIG"
+          echo "[agents] WARNING: Failed to update multi-agent + ACP defaults."
+        fi
+      else
+        echo "[agents] WARNING: $OPENCLAW_CONFIG not found; skipped multi-agent + ACP setup."
+      fi
+
+      # 9. Configure model defaults/fallbacks from available API keys
       echo "[models] Configuring model defaults and fallbacks..."
       OPENCLAW_ENV_FILE="/opt/openclaw/.env"
       model_exists() {
@@ -544,7 +629,7 @@ write_files:
       fi
 
 %{ if tailscale_enabled }
-      # 9. Read Tailscale sidecar status and Serve URL
+      # 10. Read Tailscale sidecar status and Serve URL
       echo "[tailscale] Waiting for Tailscale sidecar..."
       TS_CONTAINER_ID=""
       for attempt in $(seq 1 40); do

@@ -28,11 +28,17 @@ On first boot, `cloud-init` runs a script that:
 4. Creates and starts a `systemd` service (`openclaw`) that runs `docker compose up`
 5. If enabled, starts a Tailscale sidecar container (shared network namespace with OpenClaw) that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
 6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste
-7. Enables bundled `whatsapp` and `telegram` channel plugins
+7. Installs/enables required plugins: `acpx` (for ACP), `whatsapp`, and `telegram`
 8. If `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
    - If `telegram_allow_from` is non-empty, writes `channels.telegram.allowFrom` with those pre-approved user IDs
 9. Sets `agents.defaults.contextPruning` to `cache-ttl` defaults to reduce oversized tool/session context on long-running chats
-10. If `GEMINI_API_KEY` is set, configures model routing defaults:
+10. Applies multi-agent + ACP defaults for `main`/`researcher`/`coder`:
+   - `tools.sessions.visibility = "tree"` and `agents.defaults.sandbox.sessionToolsVisibility = "spawned"`
+   - `tools.agentToAgent.enabled = true` with allowlist `["researcher","coder"]`
+   - ACP defaults: `acp.enabled = true`, `acp.dispatch.enabled = true`, `acp.backend = "acpx"`, `acp.defaultAgent = "codex"`, `acp.allowedAgents = ["codex"]`
+   - ACP plugin defaults: `plugins.entries.acpx.config.permissionMode = "approve-all"` and `nonInteractivePermissions = "fail"`
+   - Ensures `main.subagents.allowAgents = ["researcher","coder"]` and pins `coder.runtime` to ACP (`codex`)
+11. If `GEMINI_API_KEY` is set, configures model routing defaults:
    - Primary: Gemini 3 Pro (`google/gemini-3-pro-preview`)
    - Fallbacks (when provider key/model is present): GPT 5.3 Codex (`openai-codex`), OpenAI GPT 5.3, Groq Llama Maverick
 
