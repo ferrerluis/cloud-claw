@@ -505,13 +505,14 @@ write_files:
 
       if wait_openclaw_healthy; then
         MODEL_CATALOG=$(docker exec openclaw-openclaw-1 openclaw models list --all --plain 2>/dev/null || true)
-        MAVERICK_MODEL="groq/meta-llama/llama-4-maverick-17b-128e-instruct"
-        CODEX_MODEL="openai-codex/gpt-5.3-codex"
         GEMINI_MODEL="google/gemini-3-pro-preview"
+        CODEX_MODEL="openai-codex/gpt-5.3-codex"
+        OPENAI_MODEL="openai/gpt-5.3"
+        MAVERICK_MODEL="groq/meta-llama/llama-4-maverick-17b-128e-instruct"
 
-        if has_env_key GROQ_API_KEY && model_exists "$MAVERICK_MODEL"; then
-          if docker exec openclaw-openclaw-1 openclaw models set "$MAVERICK_MODEL" >/tmp/openclaw-models-set.log 2>&1; then
-            echo "[models] Default model set: $MAVERICK_MODEL"
+        if has_env_key GEMINI_API_KEY && model_exists "$GEMINI_MODEL"; then
+          if docker exec openclaw-openclaw-1 openclaw models set "$GEMINI_MODEL" >/tmp/openclaw-models-set.log 2>&1; then
+            echo "[models] Default model set: $GEMINI_MODEL"
             if docker exec openclaw-openclaw-1 openclaw models fallbacks clear >/tmp/openclaw-models-fallback-clear.log 2>&1; then
               echo "[models] Cleared existing fallbacks."
             else
@@ -519,19 +520,24 @@ write_files:
               tail -n 5 /tmp/openclaw-models-fallback-clear.log || true
             fi
 
-            if has_env_key OPENAI_API_KEY && model_exists "$CODEX_MODEL"; then
+            # Requested fallback priority:
+            # 1) GPT 5.3 Codex  2) OpenAI GPT 5.3  3) Groq Llama Maverick
+            if model_exists "$CODEX_MODEL"; then
               add_fallback_model "$CODEX_MODEL"
               echo "[models] NOTE: $CODEX_MODEL requires one-time openai-codex auth to be usable."
             fi
-            if has_env_key GEMINI_API_KEY && model_exists "$GEMINI_MODEL"; then
-              add_fallback_model "$GEMINI_MODEL"
+            if has_env_key OPENAI_API_KEY && model_exists "$OPENAI_MODEL"; then
+              add_fallback_model "$OPENAI_MODEL"
+            fi
+            if has_env_key GROQ_API_KEY && model_exists "$MAVERICK_MODEL"; then
+              add_fallback_model "$MAVERICK_MODEL"
             fi
           else
-            echo "[models] WARNING: Failed to set default model: $MAVERICK_MODEL"
+            echo "[models] WARNING: Failed to set default model: $GEMINI_MODEL"
             tail -n 5 /tmp/openclaw-models-set.log || true
           fi
         else
-          echo "[models] Skipped: GROQ_API_KEY missing or Maverick model unavailable in catalog."
+          echo "[models] Skipped: GEMINI_API_KEY missing or $GEMINI_MODEL unavailable in catalog."
         fi
       else
         echo "[models] WARNING: OpenClaw not ready; skipped model configuration."

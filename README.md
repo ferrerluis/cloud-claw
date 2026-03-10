@@ -32,9 +32,9 @@ On first boot, `cloud-init` runs a script that:
 8. If `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
    - If `telegram_allow_from` is non-empty, writes `channels.telegram.allowFrom` with those pre-approved user IDs
 9. Sets `agents.defaults.contextPruning` to `cache-ttl` defaults to reduce oversized tool/session context on long-running chats
-10. If `GROQ_API_KEY` is set, configures model routing defaults:
-   - Primary: `groq/meta-llama/llama-4-maverick-17b-128e-instruct`
-   - Fallbacks (when provider key is present): GPT 5.3 Codex (`openai-codex`), Gemini 3 Pro
+10. If `GEMINI_API_KEY` is set, configures model routing defaults:
+   - Primary: Gemini 3 Pro (`google/gemini-3-pro-preview`)
+   - Fallbacks (when provider key/model is present): GPT 5.3 Codex (`openai-codex`), OpenAI GPT 5.3, Groq Llama Maverick
 
 OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — never publicly exposed.
 
@@ -45,7 +45,7 @@ OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — n
 | Requirement | Notes |
 |-------------|-------|
 | Terraform ≥ 1.5 | [Install](https://developer.hashicorp.com/terraform/install) |
-| SSH key pair | `ssh-keygen -t ed25519` — you'll paste the `.pub` content |
+| SSH key pair | Optional; if omitted, Terraform auto-creates a repo-local keypair in `./.ssh` |
 | Cloud credentials | AWS access key + secret, **or** DigitalOcean API token |
 | LLM API key(s) | At least one of: Anthropic, OpenAI, Groq, or Gemini |
 | Tailscale account (recommended) | [Sign up free](https://tailscale.com/) — generate an auth key |
@@ -59,24 +59,25 @@ OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — n
 git clone <this-repo> cloud-claw
 cd cloud-claw
 
-# 2. Create a repo-local SSH keypair (ignored by git)
-bin/cloud-claw-ssh-create
-# Copy the printed public key into terraform.tfvars as ssh_public_key
-
-# 3. Create your variables file (never commit this)
+# 2. Create your variables file (never commit this)
 cp terraform.tfvars.example terraform.tfvars
 $EDITOR terraform.tfvars        # fill in credentials, keys, etc.
 
-# 4. Initialise
+# 3. Initialise
 terraform init
 
-# 5. Preview
+# 4. Preview
 terraform plan
 
-# 6. Deploy
+# 5. Deploy
 terraform apply
 
-# 7. Watch bootstrap (takes ~2-3 min)
+# Terraform auto-resolves SSH key at plan/apply:
+# - if ssh_public_key is explicitly set, it uses that
+# - else it uses/creates ./.ssh/id_ed25519_cloud_claw(.pub)
+# Terraform also writes ./.ssh/config (disable with generate_repo_ssh_config = false)
+
+# 6. Watch bootstrap (takes ~2-3 min)
 # The SSH command and log tail command are shown in the outputs.
 ```
 
@@ -86,6 +87,8 @@ After `apply` completes, Terraform prints:
 instance_public_ip     = "1.2.3.4"
 ssh_command            = "ssh admin@1.2.3.4"
 repo_ssh_command       = "./bin/cloud-claw-ssh"
+repo_ssh_config_path   = "./.ssh/config"
+resolved_ssh_public_key_source = "existing_public_key"
 tailscale_note         = "Tailscale is enabled. Sidecar device 'openclaw' will appear in your admin console..."
 dashboard_url          = "https://openclaw  (via Tailscale Serve)"
 dashboard_url_with_token_import = "https://openclaw/#token=<gateway-token>"
@@ -101,6 +104,7 @@ Run `bootstrap_log_command` to watch the install progress in real time.
 ## Repo-local SSH workflow
 
 These helpers keep SSH behavior consistent per clone and avoid editing `~/.ssh/config`.
+`terraform apply` also writes `./.ssh/config` with the current instance IP/user/key path.
 
 ```bash
 # Connect (host/IP comes from terraform outputs)
@@ -204,8 +208,12 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `do_disk_size_gb` | `20` | Extra block storage size (GB) |
 | `do_existing_volume_id` | `""` | Reuse existing DO volume (needs `do_existing_volume_name` too) |
 | `do_existing_volume_name` | `""` | Name of existing DO volume |
-| `ssh_public_key` | — | SSH public key content (required) |
+| `ssh_public_key` | `""` | Optional explicit SSH public key; when empty, Terraform uses/creates repo-local key |
 | `allowed_ssh_cidr` | `"0.0.0.0/0"` | CIDR allowed on SSH port 22 |
+| `generate_repo_ssh_config` | `true` | Auto-write `./.ssh/config` during `terraform apply` |
+| `repo_ssh_host_alias` | `"cloud-claw"` | Host alias written to `./.ssh/config` |
+| `repo_ssh_identity_file` | `"./.ssh/id_ed25519_cloud_claw"` | IdentityFile written to `./.ssh/config` |
+| `repo_ssh_private_key_path` | `".ssh/id_ed25519_cloud_claw"` | Repo-relative key path for auto key resolution/generation |
 | `anthropic_api_key` | `""` | Anthropic API key |
 | `openai_api_key` | `""` | OpenAI API key |
 | `groq_api_key` | `""` | Groq API key |
@@ -226,6 +234,8 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `instance_public_ip` | Public IP of the server |
 | `ssh_command` | Full SSH command |
 | `repo_ssh_command` | Repo-local SSH wrapper command (`./bin/cloud-claw-ssh`) |
+| `repo_ssh_config_path` | Path to generated repo-local SSH config file |
+| `resolved_ssh_public_key_source` | Effective SSH key source (`tfvars_or_env`, `existing_public_key`, `derived_from_private_key`, `generated_new_keypair`) |
 | `tailscale_note` | Tailscale access instructions |
 | `dashboard_url` | URL to reach the OpenClaw UI |
 | `dashboard_url_with_token_import` | First-time URL that auto-imports token into Control UI |
@@ -257,7 +267,7 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 
 ```
 cloud-claw/
-├── .gitignore                          # Excludes *.tfvars, .terraform/, state files, .ssh/
+├── .gitignore                          # Excludes *.tfvars, .terraform/, state files, and repo-local SSH keys
 ├── bin/
 │   ├── cloud-claw-ssh                  # Repo-local SSH wrapper (reads terraform outputs)
 │   ├── cloud-claw-ssh-clean            # Kills stale local SSH client processes

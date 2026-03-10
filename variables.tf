@@ -135,14 +135,39 @@ variable "do_existing_volume_name" {
 # ─────────────────────────────────────────────────────────
 
 variable "ssh_public_key" {
-  description = "SSH public key content (e.g. contents of ~/.ssh/id_ed25519.pub)."
+  description = "SSH public key content. If empty, Terraform auto-resolves/creates a repo-local keypair and uses its .pub content."
   type        = string
+  default     = ""
 }
 
 variable "allowed_ssh_cidr" {
   description = "CIDR that is allowed to reach port 22. Restrict to your own IP for best security (e.g. \"203.0.113.5/32\")."
   type        = string
   default     = "0.0.0.0/0"
+}
+
+variable "generate_repo_ssh_config" {
+  description = "If true, terraform apply writes ./.ssh/config with the current instance IP and SSH defaults."
+  type        = bool
+  default     = true
+}
+
+variable "repo_ssh_host_alias" {
+  description = "Host alias written into ./.ssh/config."
+  type        = string
+  default     = "cloud-claw"
+}
+
+variable "repo_ssh_identity_file" {
+  description = "IdentityFile value written into ./.ssh/config."
+  type        = string
+  default     = "./.ssh/id_ed25519_cloud_claw"
+}
+
+variable "repo_ssh_private_key_path" {
+  description = "Repo-relative private key path used for auto key resolution/generation when ssh_public_key is empty."
+  type        = string
+  default     = ".ssh/id_ed25519_cloud_claw"
 }
 
 # ─────────────────────────────────────────────────────────

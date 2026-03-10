@@ -28,6 +28,21 @@ locals {
   resolved_gateway_token = trimspace(var.gateway_token) != "" ? var.gateway_token : random_password.gateway_token.result
 }
 
+data "external" "repo_ssh_public_key" {
+  count = trimspace(var.ssh_public_key) == "" ? 1 : 0
+
+  program = ["python3", "${path.root}/scripts/resolve_ssh_public_key.py"]
+  query = {
+    repo_root           = path.root
+    private_key_relpath = var.repo_ssh_private_key_path
+  }
+}
+
+locals {
+  resolved_ssh_public_key = trimspace(var.ssh_public_key) != "" ? var.ssh_public_key : data.external.repo_ssh_public_key[0].result.ssh_public_key
+  resolved_ssh_key_source = trimspace(var.ssh_public_key) != "" ? "tfvars_or_env" : data.external.repo_ssh_public_key[0].result.source
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # AWS deployment (activated when cloud_provider = "aws")
 # ─────────────────────────────────────────────────────────────────────────────
@@ -44,7 +59,7 @@ module "aws" {
   aws_disk_size_gb       = var.aws_disk_size_gb
   aws_existing_volume_id = var.aws_existing_volume_id
 
-  ssh_public_key   = var.ssh_public_key
+  ssh_public_key   = local.resolved_ssh_public_key
   allowed_ssh_cidr = var.allowed_ssh_cidr
 
   anthropic_api_key   = var.anthropic_api_key
@@ -77,7 +92,7 @@ module "digitalocean" {
   do_existing_volume_id   = var.do_existing_volume_id
   do_existing_volume_name = var.do_existing_volume_name
 
-  ssh_public_key   = var.ssh_public_key
+  ssh_public_key   = local.resolved_ssh_public_key
   allowed_ssh_cidr = var.allowed_ssh_cidr
 
   anthropic_api_key   = var.anthropic_api_key
@@ -91,4 +106,22 @@ module "digitalocean" {
 
   tailscale_enabled  = var.tailscale_enabled
   tailscale_auth_key = var.tailscale_auth_key
+}
+
+resource "local_file" "repo_ssh_config" {
+  count = var.generate_repo_ssh_config ? 1 : 0
+
+  filename        = "${path.root}/.ssh/config"
+  file_permission = "0600"
+  content         = <<-EOT
+Host ${var.repo_ssh_host_alias}
+  HostName ${local.instance_public_ip}
+  User ${var.admin_username}
+  IdentityFile ${var.repo_ssh_identity_file}
+  IdentitiesOnly yes
+  ConnectTimeout 10
+  ServerAliveInterval 20
+  ServerAliveCountMax 3
+  TCPKeepAlive yes
+EOT
 }

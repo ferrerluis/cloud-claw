@@ -53,8 +53,19 @@ do_existing_volume_id   = ""
 do_existing_volume_name = ""
 
 # ── SSH ──────────────────────────────────────────────────────────
-# Paste the full content of your public key (e.g. ~/.ssh/id_ed25519.pub)
-ssh_public_key = "ssh-ed25519 AAAA... user@host"
+# Optional explicit SSH public key.
+# If empty, Terraform auto-resolves/creates ./.ssh/id_ed25519_cloud_claw(.pub)
+# at plan/apply time and uses that public key.
+ssh_public_key = ""
+
+# Repo-relative key path used for auto key resolution/generation (when
+# ssh_public_key is empty).
+repo_ssh_private_key_path = ".ssh/id_ed25519_cloud_claw"
+
+# Write ./.ssh/config with resolved host/user/key on apply
+generate_repo_ssh_config = true
+repo_ssh_host_alias      = "cloud-claw"
+repo_ssh_identity_file   = "./.ssh/id_ed25519_cloud_claw"
 
 # Restrict SSH to your own IP for best security: "203.0.113.5/32"
 # Leave as 0.0.0.0/0 only if you rely solely on Tailscale for access control.
