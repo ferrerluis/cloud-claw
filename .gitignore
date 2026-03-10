@@ -42,3 +42,6 @@ id_ed25519
 .idea/
 *.swp
 *.swo
+
+# Local operator notes
+/CODEX.md
