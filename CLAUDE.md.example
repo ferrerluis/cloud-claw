@@ -99,3 +99,18 @@ bin/cloud-claw-ssh -- systemctl status --no-pager openclaw-tailscale-watchdog.ti
   - Use `dashboard_url_with_token_import` from Terraform output.
 - `pairing required`:
   - Run `repo_pair_latest_command` (or `pair_latest_command`) from Terraform output.
+
+## Manual Device Approval (Laptop Pairing)
+
+```bash
+# list pending pairing requests
+bin/cloud-claw-ssh -- sudo docker exec openclaw-openclaw-1 openclaw devices list
+
+# approve a specific request from the "Request" column
+bin/cloud-claw-ssh -- sudo docker exec openclaw-openclaw-1 openclaw devices approve <requestId>
+```
+
+If you are already inside the OpenClaw container shell, run:
+`openclaw devices list` and `openclaw devices approve <requestId>`.
+After approving, run `openclaw devices list` again and confirm there are no pending requests.
+Verified on March 11, 2026.
