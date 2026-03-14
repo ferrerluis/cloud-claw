@@ -92,6 +92,10 @@ telegram_allow_from = [
 # OpenClaw image tag — pin to a specific version for reproducibility
 openclaw_version = "latest"
 
+# Optional Node.js runtime flags for OpenClaw container.
+# Keep a memory cap on small instances to avoid startup OOM on newer builds.
+openclaw_node_options = "--max-old-space-size=1536"
+
 # Optional: set a fixed gateway token. Leave blank to auto-generate one that
 # Terraform stores in state and prints in outputs.
 gateway_token = ""

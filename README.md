@@ -227,6 +227,7 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `telegram_bot_token` | `""` | Optional Telegram BotFather token to preconfigure `channels.telegram.botToken` |
 | `telegram_allow_from` | `[]` | Optional list of pre-approved Telegram user IDs for `channels.telegram.allowFrom` |
 | `openclaw_version` | `"latest"` | Docker image tag |
+| `openclaw_node_options` | `""` | Optional Node.js flags for OpenClaw container runtime (set memory cap on small servers) |
 | `gateway_token` | `""` | Optional fixed gateway token (blank = Terraform auto-generates) |
 | `tailscale_enabled` | `true` | Install and configure Tailscale |
 | `tailscale_auth_key` | `""` | Tailscale auth key |

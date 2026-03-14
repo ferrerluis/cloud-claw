@@ -41,6 +41,7 @@ locals {
     tailscale_enabled        = var.tailscale_enabled
     tailscale_auth_key       = var.tailscale_auth_key
     openclaw_version         = var.openclaw_version
+    openclaw_node_options    = var.openclaw_node_options
     gateway_token            = var.gateway_token
   })
 }

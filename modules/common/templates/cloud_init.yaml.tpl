@@ -76,6 +76,7 @@ write_files:
       GEMINI_API_KEY=${gemini_api_key}
       TELEGRAM_BOT_TOKEN=${telegram_bot_token}
       OPENCLAW_GATEWAY_TOKEN=${gateway_token}
+      NODE_OPTIONS=${openclaw_node_options}
 %{ if tailscale_enabled }
       OPENCLAW_GATEWAY_BIND=loopback
 %{ else }
@@ -389,53 +390,63 @@ write_files:
         return 1
       }
 
+      # Prevent long-running/interactive CLI calls from hanging bootstrap forever.
+      run_openclaw_cli() {
+        if command -v timeout >/dev/null 2>&1; then
+          timeout "$${OPENCLAW_CLI_TIMEOUT_SECONDS:-30}" docker exec openclaw-openclaw-1 openclaw "$@"
+        else
+          docker exec openclaw-openclaw-1 openclaw "$@"
+        fi
+      }
+
       # 5. Install/enable required plugins for channel + ACP workflows
       echo "[plugins] Installing/enabling plugins (acpx, whatsapp, telegram)..."
       PLUGINS_RESTART_NEEDED=0
-      if ! wait_openclaw_healthy; then
-        echo "[plugins] WARNING: OpenClaw did not become ready in time; skipping plugin enable."
-      fi
-      ACPX_INSTALL_LOG="/tmp/openclaw-plugin-install-acpx.log"
-      ACPX_INSTALL_OK=0
-      for attempt in $(seq 1 5); do
-        if docker exec openclaw-openclaw-1 openclaw plugins install acpx >"$ACPX_INSTALL_LOG" 2>&1; then
-          echo "[plugins] acpx plugin installed."
-          ACPX_INSTALL_OK=1
-          PLUGINS_RESTART_NEEDED=1
-          break
-        fi
-        if grep -qi "already installed" "$ACPX_INSTALL_LOG"; then
-          echo "[plugins] acpx plugin already installed."
-          ACPX_INSTALL_OK=1
-          break
-        fi
-        sleep 3
-      done
-      if [ "$ACPX_INSTALL_OK" != "1" ]; then
-        echo "[plugins] WARNING: Failed to install acpx plugin after retries."
-        tail -n 5 "$ACPX_INSTALL_LOG" || true
-      fi
-
-      for plugin in acpx whatsapp telegram; do
-        PLUGIN_ENABLE_LOG="/tmp/openclaw-plugin-enable-$plugin.log"
-        ENABLE_OK=0
-        for attempt in $(seq 1 10); do
-          if docker exec openclaw-openclaw-1 openclaw plugins enable "$plugin" >"$PLUGIN_ENABLE_LOG" 2>&1; then
-            echo "[plugins] $plugin plugin enabled."
-            ENABLE_OK=1
+      if wait_openclaw_healthy; then
+        ACPX_INSTALL_LOG="/tmp/openclaw-plugin-install-acpx.log"
+        ACPX_INSTALL_OK=0
+        for attempt in $(seq 1 5); do
+          if run_openclaw_cli plugins install acpx >"$ACPX_INSTALL_LOG" 2>&1; then
+            echo "[plugins] acpx plugin installed."
+            ACPX_INSTALL_OK=1
             PLUGINS_RESTART_NEEDED=1
+            break
+          fi
+          if grep -qi "already installed" "$ACPX_INSTALL_LOG"; then
+            echo "[plugins] acpx plugin already installed."
+            ACPX_INSTALL_OK=1
             break
           fi
           sleep 3
         done
-        if [ "$ENABLE_OK" != "1" ]; then
-          echo "[plugins] WARNING: Failed to enable $plugin plugin after retries."
-          tail -n 5 "$PLUGIN_ENABLE_LOG" || true
+        if [ "$ACPX_INSTALL_OK" != "1" ]; then
+          echo "[plugins] WARNING: Failed to install acpx plugin after retries."
+          tail -n 5 "$ACPX_INSTALL_LOG" || true
         fi
-      done
-      if [ "$PLUGINS_RESTART_NEEDED" = "1" ]; then
-        systemctl restart openclaw
-        wait_openclaw_healthy || echo "[plugins] WARNING: OpenClaw restart after plugin enable did not become healthy in time."
+
+        for plugin in acpx whatsapp telegram; do
+          PLUGIN_ENABLE_LOG="/tmp/openclaw-plugin-enable-$plugin.log"
+          ENABLE_OK=0
+          for attempt in $(seq 1 10); do
+            if run_openclaw_cli plugins enable "$plugin" >"$PLUGIN_ENABLE_LOG" 2>&1; then
+              echo "[plugins] $plugin plugin enabled."
+              ENABLE_OK=1
+              PLUGINS_RESTART_NEEDED=1
+              break
+            fi
+            sleep 3
+          done
+          if [ "$ENABLE_OK" != "1" ]; then
+            echo "[plugins] WARNING: Failed to enable $plugin plugin after retries."
+            tail -n 5 "$PLUGIN_ENABLE_LOG" || true
+          fi
+        done
+        if [ "$PLUGINS_RESTART_NEEDED" = "1" ]; then
+          systemctl restart openclaw
+          wait_openclaw_healthy || echo "[plugins] WARNING: OpenClaw restart after plugin enable did not become healthy in time."
+        fi
+      else
+        echo "[plugins] WARNING: OpenClaw did not become ready in time; skipping plugin enable."
       fi
 
       OPENCLAW_ENV_FILE="/opt/openclaw/.env"
@@ -580,7 +591,7 @@ write_files:
       }
       add_fallback_model() {
         local model_ref="$1"
-        if docker exec openclaw-openclaw-1 openclaw models fallbacks add "$model_ref" >/tmp/openclaw-models-fallback-add.log 2>&1; then
+        if run_openclaw_cli models fallbacks add "$model_ref" >/tmp/openclaw-models-fallback-add.log 2>&1; then
           echo "[models] Added fallback: $model_ref"
         else
           echo "[models] WARNING: Failed to add fallback: $model_ref"
@@ -589,16 +600,16 @@ write_files:
       }
 
       if wait_openclaw_healthy; then
-        MODEL_CATALOG=$(docker exec openclaw-openclaw-1 openclaw models list --all --plain 2>/dev/null || true)
+        MODEL_CATALOG=$(run_openclaw_cli models list --all --plain 2>/dev/null || true)
         GEMINI_MODEL="google/gemini-3-pro-preview"
         CODEX_MODEL="openai-codex/gpt-5.3-codex"
         OPENAI_MODEL="openai/gpt-5.3"
         MAVERICK_MODEL="groq/meta-llama/llama-4-maverick-17b-128e-instruct"
 
         if has_env_key GEMINI_API_KEY && model_exists "$GEMINI_MODEL"; then
-          if docker exec openclaw-openclaw-1 openclaw models set "$GEMINI_MODEL" >/tmp/openclaw-models-set.log 2>&1; then
+          if run_openclaw_cli models set "$GEMINI_MODEL" >/tmp/openclaw-models-set.log 2>&1; then
             echo "[models] Default model set: $GEMINI_MODEL"
-            if docker exec openclaw-openclaw-1 openclaw models fallbacks clear >/tmp/openclaw-models-fallback-clear.log 2>&1; then
+            if run_openclaw_cli models fallbacks clear >/tmp/openclaw-models-fallback-clear.log 2>&1; then
               echo "[models] Cleared existing fallbacks."
             else
               echo "[models] WARNING: Failed to clear existing fallbacks."

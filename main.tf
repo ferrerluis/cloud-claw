@@ -62,14 +62,15 @@ module "aws" {
   ssh_public_key   = local.resolved_ssh_public_key
   allowed_ssh_cidr = var.allowed_ssh_cidr
 
-  anthropic_api_key   = var.anthropic_api_key
-  openai_api_key      = var.openai_api_key
-  groq_api_key        = var.groq_api_key
-  gemini_api_key      = var.gemini_api_key
-  telegram_bot_token  = var.telegram_bot_token
-  telegram_allow_from = var.telegram_allow_from
-  openclaw_version    = var.openclaw_version
-  gateway_token       = local.resolved_gateway_token
+  anthropic_api_key     = var.anthropic_api_key
+  openai_api_key        = var.openai_api_key
+  groq_api_key          = var.groq_api_key
+  gemini_api_key        = var.gemini_api_key
+  telegram_bot_token    = var.telegram_bot_token
+  telegram_allow_from   = var.telegram_allow_from
+  openclaw_version      = var.openclaw_version
+  openclaw_node_options = var.openclaw_node_options
+  gateway_token         = local.resolved_gateway_token
 
   tailscale_enabled  = var.tailscale_enabled
   tailscale_auth_key = var.tailscale_auth_key
@@ -95,14 +96,15 @@ module "digitalocean" {
   ssh_public_key   = local.resolved_ssh_public_key
   allowed_ssh_cidr = var.allowed_ssh_cidr
 
-  anthropic_api_key   = var.anthropic_api_key
-  openai_api_key      = var.openai_api_key
-  groq_api_key        = var.groq_api_key
-  gemini_api_key      = var.gemini_api_key
-  telegram_bot_token  = var.telegram_bot_token
-  telegram_allow_from = var.telegram_allow_from
-  openclaw_version    = var.openclaw_version
-  gateway_token       = local.resolved_gateway_token
+  anthropic_api_key     = var.anthropic_api_key
+  openai_api_key        = var.openai_api_key
+  groq_api_key          = var.groq_api_key
+  gemini_api_key        = var.gemini_api_key
+  telegram_bot_token    = var.telegram_bot_token
+  telegram_allow_from   = var.telegram_allow_from
+  openclaw_version      = var.openclaw_version
+  openclaw_node_options = var.openclaw_node_options
+  gateway_token         = local.resolved_gateway_token
 
   tailscale_enabled  = var.tailscale_enabled
   tailscale_auth_key = var.tailscale_auth_key

@@ -221,6 +221,12 @@ variable "openclaw_version" {
   default     = "latest"
 }
 
+variable "openclaw_node_options" {
+  description = "Optional NODE_OPTIONS passed to the OpenClaw container (e.g. \"--max-old-space-size=1536\")."
+  type        = string
+  default     = ""
+}
+
 variable "gateway_token" {
   description = "Gateway token used by the Control UI/WebSocket auth. Leave blank to auto-generate and persist in Terraform state."
   type        = string

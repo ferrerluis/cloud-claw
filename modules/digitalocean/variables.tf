@@ -53,6 +53,7 @@ variable "telegram_allow_from" {
 }
 
 variable "openclaw_version" { type = string }
+variable "openclaw_node_options" { type = string }
 
 variable "gateway_token" {
   type      = string
