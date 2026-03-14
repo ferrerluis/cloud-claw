@@ -100,6 +100,16 @@ bin/cloud-claw-ssh -- systemctl status --no-pager openclaw-tailscale-watchdog.ti
 - `pairing required`:
   - Run `repo_pair_latest_command` (or `pair_latest_command`) from Terraform output.
 
+## Operational Gotchas
+
+- After restart/upgrade, gateway can take ~60-90s before `/healthz` returns `200`. Early `health: starting` is often transient.
+- Host-level `curl http://127.0.0.1:18789` can show resets even when service is healthy for Tailscale traffic. Verify with:
+  - in-container check: `docker exec openclaw-openclaw-1 .../healthz`
+  - sidecar check: `docker exec openclaw-tailscale-1 wget ...127.0.0.1:18789/healthz`
+- If cloud-init appears stuck, check for hung plugin commands (`docker exec ... openclaw plugins enable ...`). These can block bootstrap.
+- For data recovery, restore/move **contents** under `/opt/openclaw/data`; do not move the mounted directory itself.
+- `gateway.controlUi.allowedOrigins` supports exact origins and literal `"*"`, but not patterns like `"*.ts.net"`.
+
 ## Manual Device Approval (Laptop Pairing)
 
 ```bash
@@ -113,4 +123,3 @@ bin/cloud-claw-ssh -- sudo docker exec openclaw-openclaw-1 openclaw devices appr
 If you are already inside the OpenClaw container shell, run:
 `openclaw devices list` and `openclaw devices approve <requestId>`.
 After approving, run `openclaw devices list` again and confirm there are no pending requests.
-Verified on March 11, 2026.
