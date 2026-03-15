@@ -227,6 +227,24 @@ variable "openclaw_node_options" {
   default     = ""
 }
 
+variable "openclaw_swap_size_mb" {
+  description = "Optional swap size in MB created at bootstrap time (set > 0 for small RAM nodes, e.g. 2048)."
+  type        = number
+  default     = 0
+}
+
+variable "openclaw_health_start_period_seconds" {
+  description = "Docker healthcheck start_period in seconds for OpenClaw container warm-up."
+  type        = number
+  default     = 120
+}
+
+variable "openclaw_health_retries" {
+  description = "Docker healthcheck retries before marking OpenClaw unhealthy."
+  type        = number
+  default     = 8
+}
+
 variable "gateway_token" {
   description = "Gateway token used by the Control UI/WebSocket auth. Leave blank to auto-generate and persist in Terraform state."
   type        = string

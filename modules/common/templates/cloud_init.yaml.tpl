@@ -28,6 +28,12 @@ write_files:
           volumes:
             - /opt/openclaw/data:/home/node/.openclaw
             - /opt/openclaw/workspace:/home/node/openclaw/workspace
+          healthcheck:
+            test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+            interval: 30s
+            timeout: 10s
+            retries: ${openclaw_health_retries}
+            start_period: ${openclaw_health_start_period_seconds}s
 %{~ if tailscale_enabled ~}
 
         tailscale:
@@ -326,6 +332,7 @@ write_files:
       #!/bin/bash
       set -euo pipefail
       exec > >(tee -a /var/log/openclaw-bootstrap.log) 2>&1
+      NEEDS_RESTART=0
 
       echo "========================================================"
       echo " OpenClaw Bootstrap  $(date)"
@@ -367,7 +374,43 @@ write_files:
       echo "[volume] Mounting persistent storage..."
       /root/mount-openclaw-volume.sh
 
-      # 4. Start OpenClaw
+      # 4. Optional swap (recommended for small RAM nodes)
+      configure_swap() {
+        local swap_mb=${openclaw_swap_size_mb}
+        if [ "$swap_mb" -le 0 ]; then
+          echo "[swap] Skipped (openclaw_swap_size_mb=$swap_mb)."
+          return 0
+        fi
+
+        if swapon --show --noheadings 2>/dev/null | grep -q .; then
+          echo "[swap] Swap already enabled:"
+          swapon --show || true
+          return 0
+        fi
+
+        echo "[swap] Configuring /swapfile (${openclaw_swap_size_mb} MB)..."
+        if [ ! -f /swapfile ]; then
+          if command -v fallocate >/dev/null 2>&1; then
+            fallocate -l ${openclaw_swap_size_mb}M /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=${openclaw_swap_size_mb} status=none
+          else
+            dd if=/dev/zero of=/swapfile bs=1M count=${openclaw_swap_size_mb} status=none
+          fi
+        fi
+
+        chmod 600 /swapfile
+        mkswap /swapfile >/dev/null 2>&1 || true
+        swapon /swapfile
+        if ! grep -qE '^/swapfile[[:space:]]' /etc/fstab; then
+          echo "/swapfile none swap sw 0 0" >> /etc/fstab
+        fi
+        echo "vm.swappiness=10" > /etc/sysctl.d/99-openclaw-memory.conf
+        sysctl -p /etc/sysctl.d/99-openclaw-memory.conf >/dev/null || true
+        swapon --show || true
+      }
+
+      configure_swap
+
+      # 5. Start OpenClaw
       echo "[openclaw] Enabling and starting OpenClaw service..."
       systemctl daemon-reload
       systemctl enable openclaw
@@ -388,6 +431,10 @@ write_files:
           sleep 3
         done
         return 1
+      }
+
+      mark_openclaw_restart_needed() {
+        NEEDS_RESTART=1
       }
 
       # Prevent long-running/interactive CLI calls from hanging bootstrap forever.
@@ -442,8 +489,8 @@ write_files:
           fi
         done
         if [ "$PLUGINS_RESTART_NEEDED" = "1" ]; then
-          systemctl restart openclaw
-          wait_openclaw_healthy || echo "[plugins] WARNING: OpenClaw restart after plugin enable did not become healthy in time."
+          echo "[plugins] Plugin changes detected; scheduling a deferred OpenClaw restart."
+          mark_openclaw_restart_needed
         fi
       else
         echo "[plugins] WARNING: OpenClaw did not become ready in time; skipping plugin enable."
@@ -474,8 +521,7 @@ write_files:
               mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
               chown 1000:1000 "$OPENCLAW_CONFIG" || true
               echo "[telegram] Telegram channel config updated."
-              systemctl restart openclaw
-              wait_openclaw_healthy || echo "[telegram] WARNING: OpenClaw restart after Telegram config did not become healthy in time."
+              mark_openclaw_restart_needed
             else
               rm -f "$TMP_CONFIG"
               echo "[telegram] Telegram channel config already up to date."
@@ -504,8 +550,7 @@ write_files:
             mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
             chown 1000:1000 "$OPENCLAW_CONFIG" || true
             echo "[pruning] Context pruning config updated."
-            systemctl restart openclaw
-            wait_openclaw_healthy || echo "[pruning] WARNING: OpenClaw restart after pruning config did not become healthy in time."
+            mark_openclaw_restart_needed
           else
             rm -f "$TMP_CONFIG"
             echo "[pruning] Context pruning config already up to date."
@@ -568,8 +613,7 @@ write_files:
             mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
             chown 1000:1000 "$OPENCLAW_CONFIG" || true
             echo "[agents] Multi-agent + ACP defaults updated."
-            systemctl restart openclaw
-            wait_openclaw_healthy || echo "[agents] WARNING: OpenClaw restart after ACP defaults did not become healthy in time."
+            mark_openclaw_restart_needed
           else
             rm -f "$TMP_CONFIG"
             echo "[agents] Multi-agent + ACP defaults already up to date."
@@ -601,14 +645,15 @@ write_files:
 
       if wait_openclaw_healthy; then
         MODEL_CATALOG=$(run_openclaw_cli models list --all --plain 2>/dev/null || true)
-        GEMINI_MODEL="google/gemini-3-pro-preview"
-        CODEX_MODEL="openai-codex/gpt-5.3-codex"
-        OPENAI_MODEL="openai/gpt-5.3"
-        MAVERICK_MODEL="groq/meta-llama/llama-4-maverick-17b-128e-instruct"
+        DEFAULT_MODEL="google/gemini-3-flash"
+        GEMINI_PRO_MODEL="google/gemini-3-pro-preview"
+        HAIKU_MODEL="anthropic/claude-haiku-4-5"
+        SONNET_MODEL="anthropic/claude-sonnet-4-6"
+        OPUS_MODEL="anthropic/claude-opus-4-6"
 
-        if has_env_key GEMINI_API_KEY && model_exists "$GEMINI_MODEL"; then
-          if run_openclaw_cli models set "$GEMINI_MODEL" >/tmp/openclaw-models-set.log 2>&1; then
-            echo "[models] Default model set: $GEMINI_MODEL"
+        if has_env_key GEMINI_API_KEY && model_exists "$DEFAULT_MODEL"; then
+          if run_openclaw_cli models set "$DEFAULT_MODEL" >/tmp/openclaw-models-set.log 2>&1; then
+            echo "[models] Default model set: $DEFAULT_MODEL"
             if run_openclaw_cli models fallbacks clear >/tmp/openclaw-models-fallback-clear.log 2>&1; then
               echo "[models] Cleared existing fallbacks."
             else
@@ -616,24 +661,26 @@ write_files:
               tail -n 5 /tmp/openclaw-models-fallback-clear.log || true
             fi
 
-            # Requested fallback priority:
-            # 1) GPT 5.3 Codex  2) OpenAI GPT 5.3  3) Groq Llama Maverick
-            if model_exists "$CODEX_MODEL"; then
-              add_fallback_model "$CODEX_MODEL"
-              echo "[models] NOTE: $CODEX_MODEL requires one-time openai-codex auth to be usable."
+            # Fallback priority:
+            # 1) Gemini 3 Pro  2) Claude Haiku 4.5  3) Claude Sonnet 4.6  4) Claude Opus 4.6
+            if has_env_key GEMINI_API_KEY && model_exists "$GEMINI_PRO_MODEL"; then
+              add_fallback_model "$GEMINI_PRO_MODEL"
             fi
-            if has_env_key OPENAI_API_KEY && model_exists "$OPENAI_MODEL"; then
-              add_fallback_model "$OPENAI_MODEL"
+            if has_env_key ANTHROPIC_API_KEY && model_exists "$HAIKU_MODEL"; then
+              add_fallback_model "$HAIKU_MODEL"
             fi
-            if has_env_key GROQ_API_KEY && model_exists "$MAVERICK_MODEL"; then
-              add_fallback_model "$MAVERICK_MODEL"
+            if has_env_key ANTHROPIC_API_KEY && model_exists "$SONNET_MODEL"; then
+              add_fallback_model "$SONNET_MODEL"
+            fi
+            if has_env_key ANTHROPIC_API_KEY && model_exists "$OPUS_MODEL"; then
+              add_fallback_model "$OPUS_MODEL"
             fi
           else
-            echo "[models] WARNING: Failed to set default model: $GEMINI_MODEL"
+            echo "[models] WARNING: Failed to set default model: $DEFAULT_MODEL"
             tail -n 5 /tmp/openclaw-models-set.log || true
           fi
         else
-          echo "[models] Skipped: GEMINI_API_KEY missing or $GEMINI_MODEL unavailable in catalog."
+          echo "[models] Skipped: GEMINI_API_KEY missing or $DEFAULT_MODEL unavailable in catalog."
         fi
       else
         echo "[models] WARNING: OpenClaw not ready; skipped model configuration."
@@ -662,7 +709,7 @@ write_files:
             mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
             chown 1000:1000 "$OPENCLAW_CONFIG" || true
             echo "[openclaw] Updated gateway.auth.token and gateway.controlUi.allowedOrigins."
-            systemctl restart openclaw
+            mark_openclaw_restart_needed
           else
             rm -f "$TMP_CONFIG"
             echo "[openclaw] WARNING: Failed to update gateway.controlUi.allowedOrigins."
@@ -679,6 +726,12 @@ write_files:
         echo "[tailscale] WARNING: Tailscale sidecar container not detected."
       fi
 %{ endif }
+
+      if [ "$NEEDS_RESTART" = "1" ]; then
+        echo "[openclaw] Applying accumulated config changes with one final restart..."
+        systemctl restart openclaw
+        wait_openclaw_healthy || echo "[openclaw] WARNING: OpenClaw did not become healthy after final restart."
+      fi
 
       echo "========================================================"
       echo " Bootstrap complete  $(date)"

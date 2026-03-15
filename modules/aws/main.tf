@@ -44,23 +44,26 @@ locals {
   ebs_volume_id = var.aws_existing_volume_id != "" ? var.aws_existing_volume_id : one(aws_ebs_volume.this[*].id)
 
   cloud_init = templatefile("${path.module}/../common/templates/cloud_init.yaml.tpl", {
-    provider_type            = "aws"
-    project_name             = var.project_name
-    admin_username           = var.admin_username
-    admin_ssh_public_key     = var.ssh_public_key
-    ebs_volume_id            = local.ebs_volume_id
-    do_volume_name           = ""
-    anthropic_api_key        = var.anthropic_api_key
-    openai_api_key           = var.openai_api_key
-    groq_api_key             = var.groq_api_key
-    gemini_api_key           = var.gemini_api_key
-    telegram_bot_token       = var.telegram_bot_token
-    telegram_allow_from_json = jsonencode(var.telegram_allow_from)
-    tailscale_enabled        = var.tailscale_enabled
-    tailscale_auth_key       = var.tailscale_auth_key
-    openclaw_version         = var.openclaw_version
-    openclaw_node_options    = var.openclaw_node_options
-    gateway_token            = var.gateway_token
+    provider_type                        = "aws"
+    project_name                         = var.project_name
+    admin_username                       = var.admin_username
+    admin_ssh_public_key                 = var.ssh_public_key
+    ebs_volume_id                        = local.ebs_volume_id
+    do_volume_name                       = ""
+    anthropic_api_key                    = var.anthropic_api_key
+    openai_api_key                       = var.openai_api_key
+    groq_api_key                         = var.groq_api_key
+    gemini_api_key                       = var.gemini_api_key
+    telegram_bot_token                   = var.telegram_bot_token
+    telegram_allow_from_json             = jsonencode(var.telegram_allow_from)
+    tailscale_enabled                    = var.tailscale_enabled
+    tailscale_auth_key                   = var.tailscale_auth_key
+    openclaw_version                     = var.openclaw_version
+    openclaw_node_options                = var.openclaw_node_options
+    openclaw_swap_size_mb                = var.openclaw_swap_size_mb
+    openclaw_health_start_period_seconds = var.openclaw_health_start_period_seconds
+    openclaw_health_retries              = var.openclaw_health_retries
+    gateway_token                        = var.gateway_token
   })
 }
 

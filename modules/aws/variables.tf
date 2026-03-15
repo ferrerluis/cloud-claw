@@ -50,6 +50,9 @@ variable "telegram_allow_from" {
 
 variable "openclaw_version" { type = string }
 variable "openclaw_node_options" { type = string }
+variable "openclaw_swap_size_mb" { type = number }
+variable "openclaw_health_start_period_seconds" { type = number }
+variable "openclaw_health_retries" { type = number }
 
 variable "gateway_token" {
   type      = string
