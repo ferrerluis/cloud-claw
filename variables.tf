@@ -181,6 +181,13 @@ variable "anthropic_api_key" {
   sensitive   = true
 }
 
+variable "anthropic_auth_key" {
+  description = "Anthropic auth key for Claude Code CLI tools (ACP plugin + Claude Proxy). Separate from anthropic_api_key which is used for pay-per-token models. Falls back to anthropic_api_key if blank."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "openai_api_key" {
   description = "OpenAI API key for GPT models."
   type        = string

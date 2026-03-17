@@ -39,6 +39,11 @@ variable "gemini_api_key" {
   sensitive = true
 }
 
+variable "anthropic_auth_key" {
+  type      = string
+  sensitive = true
+}
+
 variable "telegram_bot_token" {
   type      = string
   sensitive = true

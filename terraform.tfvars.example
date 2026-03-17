@@ -75,10 +75,11 @@ allowed_ssh_cidr = "0.0.0.0/0"
 # Supply only the keys for the providers you intend to use in OpenClaw.
 # Unused keys can be left as empty strings.
 
-anthropic_api_key = "sk-ant-api03-..."  # Claude (Opus, Sonnet, Haiku)
-openai_api_key    = "sk-..."            # GPT-4o, o3, etc.
-groq_api_key      = ""                  # e.g. gsk_...  (Llama, Mixtral via Groq)
-gemini_api_key    = ""                  # e.g. AIzaSy...
+anthropic_api_key  = "sk-ant-api03-..."  # Claude (Opus, Sonnet, Haiku) — pay-per-token
+anthropic_auth_key = ""                  # Claude Code setup-token (run `claude setup-token`); enables native anthropic/* models
+openai_api_key     = "sk-..."           # GPT-4o, o3, etc.
+groq_api_key       = ""                 # e.g. gsk_...  (Llama, Mixtral via Groq)
+gemini_api_key     = ""                 # e.g. AIzaSy...
 
 # Optional: Telegram bot token from BotFather to preconfigure channels.telegram.botToken at bootstrap.
 telegram_bot_token = ""                 # e.g. 123456789:AA...

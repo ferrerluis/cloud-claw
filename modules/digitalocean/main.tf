@@ -33,6 +33,7 @@ locals {
     ebs_volume_id                        = ""
     do_volume_name                       = local.do_volume_name
     anthropic_api_key                    = var.anthropic_api_key
+    anthropic_auth_key                   = var.anthropic_auth_key
     openai_api_key                       = var.openai_api_key
     groq_api_key                         = var.groq_api_key
     gemini_api_key                       = var.gemini_api_key

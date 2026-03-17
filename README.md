@@ -38,9 +38,10 @@ On first boot, `cloud-init` runs a script that:
    - ACP defaults: `acp.enabled = true`, `acp.dispatch.enabled = true`, `acp.backend = "acpx"`, `acp.defaultAgent = "codex"`, `acp.allowedAgents = ["codex"]`
    - ACP plugin defaults: `plugins.entries.acpx.config.permissionMode = "approve-all"` and `nonInteractivePermissions = "fail"`
    - Ensures `main.subagents.allowAgents = ["researcher","coder"]` and pins `coder.runtime` to ACP (`codex`)
-11. If `GEMINI_API_KEY` is set, configures model routing defaults:
-   - Primary: Gemini 3 Pro (`google/gemini-3-pro-preview`)
-   - Fallbacks (when provider key/model is present): GPT 5.3 Codex (`openai-codex`), OpenAI GPT 5.3, Groq Llama Maverick
+11. If `ANTHROPIC_AUTH_KEY` is set, registers a Claude Code setup-token with OpenClaw's native `anthropic` provider
+12. Configures model routing defaults:
+    - Primary: Claude Haiku 4.5 (`anthropic/claude-haiku-4-5`)
+    - Fallbacks (when provider key/model is present): Gemini Flash, Claude Sonnet 4.6, Claude Opus 4.6
 
 OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — never publicly exposed.
 
@@ -220,7 +221,8 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `repo_ssh_host_alias` | `"cloud-claw"` | Host alias written to `./.ssh/config` |
 | `repo_ssh_identity_file` | `"./.ssh/id_ed25519_cloud_claw"` | IdentityFile written to `./.ssh/config` |
 | `repo_ssh_private_key_path` | `".ssh/id_ed25519_cloud_claw"` | Repo-relative key path for auto key resolution/generation |
-| `anthropic_api_key` | `""` | Anthropic API key |
+| `anthropic_api_key` | `""` | Anthropic API key (pay-per-token models) |
+| `anthropic_auth_key` | `""` | Claude Code setup-token for native Anthropic provider auth (run `claude setup-token` to generate) |
 | `openai_api_key` | `""` | OpenAI API key |
 | `groq_api_key` | `""` | Groq API key |
 | `gemini_api_key` | `""` | Google Gemini API key |
@@ -228,6 +230,9 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `telegram_allow_from` | `[]` | Optional list of pre-approved Telegram user IDs for `channels.telegram.allowFrom` |
 | `openclaw_version` | `"latest"` | Docker image tag |
 | `openclaw_node_options` | `""` | Optional Node.js flags for OpenClaw container runtime (set memory cap on small servers) |
+| `openclaw_swap_size_mb` | `0` | Swap file size in MB (set > 0 for small RAM nodes) |
+| `openclaw_health_start_period_seconds` | `120` | Docker healthcheck start_period for OpenClaw |
+| `openclaw_health_retries` | `8` | Docker healthcheck retries before marking unhealthy |
 | `gateway_token` | `""` | Optional fixed gateway token (blank = Terraform auto-generates) |
 | `tailscale_enabled` | `true` | Install and configure Tailscale |
 | `tailscale_auth_key` | `""` | Tailscale auth key |
