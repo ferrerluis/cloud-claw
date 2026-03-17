@@ -54,7 +54,7 @@ write_files:
           command: ["/bin/sh", "/bootstrap.sh"]
 %{~ endif ~}
 
-      #  Optional: Google Drive sync via rclone 
+      #  Optional: Google Drive sync via rclone
       # Uncomment and configure rclone (https://rclone.org/drive/) to sync
       # the workspace to Google Drive. See README for full instructions.
       #  rclone:
@@ -77,6 +77,7 @@ write_files:
     owner: root:root
     content: |
       ANTHROPIC_API_KEY=${anthropic_api_key}
+      ANTHROPIC_AUTH_KEY=${anthropic_auth_key}
       OPENAI_API_KEY=${openai_api_key}
       GROQ_API_KEY=${groq_api_key}
       GEMINI_API_KEY=${gemini_api_key}
@@ -92,6 +93,7 @@ write_files:
       TAILSCALE_AUTH_KEY=${tailscale_auth_key}
       TAILSCALE_HOSTNAME=${project_name}
 %{ endif }
+
 
 %{ if tailscale_enabled }
   - path: /opt/openclaw/tailscale-bootstrap.sh
@@ -626,9 +628,30 @@ write_files:
         echo "[agents] WARNING: $OPENCLAW_CONFIG not found; skipped multi-agent + ACP setup."
       fi
 
-      # 9. Configure model defaults/fallbacks from available API keys
+      # 9. Register Anthropic setup-token so native anthropic/* models are authenticated.
+      #     Uses `onboard --non-interactive` which works headless (no TTY required).
+      #     Token value is substituted by Terraform at render time; skipped if unset.
+      if has_env_key ANTHROPIC_AUTH_KEY; then
+        echo "[anthropic] Registering Anthropic setup-token..."
+        if wait_openclaw_healthy; then
+          if docker exec openclaw-openclaw-1 openclaw onboard --non-interactive \
+              --auth-choice token \
+              --token-provider anthropic \
+              --token "${anthropic_auth_key}" \
+              --token-expires-in 365d; then
+            echo "[anthropic] Setup-token registered successfully."
+          else
+            echo "[anthropic] WARNING: onboard --non-interactive command failed."
+          fi
+        else
+          echo "[anthropic] WARNING: OpenClaw not healthy; skipped token registration."
+        fi
+      else
+        echo "[anthropic] Skipped: ANTHROPIC_AUTH_KEY not set."
+      fi
+
+      # 10. Configure model defaults/fallbacks
       echo "[models] Configuring model defaults and fallbacks..."
-      OPENCLAW_ENV_FILE="/opt/openclaw/.env"
       model_exists() {
         local model_ref="$1"
         printf '%s\n' "$MODEL_CATALOG" | grep -Fxq "$model_ref"
@@ -645,13 +668,12 @@ write_files:
 
       if wait_openclaw_healthy; then
         MODEL_CATALOG=$(run_openclaw_cli models list --all --plain 2>/dev/null || true)
-        DEFAULT_MODEL="google/gemini-3-flash"
-        GEMINI_PRO_MODEL="google/gemini-3-pro-preview"
-        HAIKU_MODEL="anthropic/claude-haiku-4-5"
+        DEFAULT_MODEL="anthropic/claude-haiku-4-5"
+        GEMINI_FLASH_MODEL="google/gemini-3-flash-preview"
         SONNET_MODEL="anthropic/claude-sonnet-4-6"
         OPUS_MODEL="anthropic/claude-opus-4-6"
 
-        if has_env_key GEMINI_API_KEY && model_exists "$DEFAULT_MODEL"; then
+        if has_env_key ANTHROPIC_AUTH_KEY && model_exists "$DEFAULT_MODEL"; then
           if run_openclaw_cli models set "$DEFAULT_MODEL" >/tmp/openclaw-models-set.log 2>&1; then
             echo "[models] Default model set: $DEFAULT_MODEL"
             if run_openclaw_cli models fallbacks clear >/tmp/openclaw-models-fallback-clear.log 2>&1; then
@@ -662,17 +684,14 @@ write_files:
             fi
 
             # Fallback priority:
-            # 1) Gemini 3 Pro  2) Claude Haiku 4.5  3) Claude Sonnet 4.6  4) Claude Opus 4.6
-            if has_env_key GEMINI_API_KEY && model_exists "$GEMINI_PRO_MODEL"; then
-              add_fallback_model "$GEMINI_PRO_MODEL"
+            # 1) Gemini Flash  2) Claude Sonnet  3) Claude Opus
+            if has_env_key GEMINI_API_KEY && model_exists "$GEMINI_FLASH_MODEL"; then
+              add_fallback_model "$GEMINI_FLASH_MODEL"
             fi
-            if has_env_key ANTHROPIC_API_KEY && model_exists "$HAIKU_MODEL"; then
-              add_fallback_model "$HAIKU_MODEL"
-            fi
-            if has_env_key ANTHROPIC_API_KEY && model_exists "$SONNET_MODEL"; then
+            if has_env_key ANTHROPIC_AUTH_KEY && model_exists "$SONNET_MODEL"; then
               add_fallback_model "$SONNET_MODEL"
             fi
-            if has_env_key ANTHROPIC_API_KEY && model_exists "$OPUS_MODEL"; then
+            if has_env_key ANTHROPIC_AUTH_KEY && model_exists "$OPUS_MODEL"; then
               add_fallback_model "$OPUS_MODEL"
             fi
           else
@@ -680,7 +699,7 @@ write_files:
             tail -n 5 /tmp/openclaw-models-set.log || true
           fi
         else
-          echo "[models] Skipped: GEMINI_API_KEY missing or $DEFAULT_MODEL unavailable in catalog."
+          echo "[models] Skipped: ANTHROPIC_AUTH_KEY missing or $DEFAULT_MODEL unavailable in catalog."
         fi
       else
         echo "[models] WARNING: OpenClaw not ready; skipped model configuration."
