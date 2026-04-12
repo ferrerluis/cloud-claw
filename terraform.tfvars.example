@@ -90,12 +90,37 @@ telegram_allow_from = [
   # "1234567890",
 ]
 
+# Bootstrap config behavior:
+# - auto: preserve existing openclaw.json on reused volumes, manage fresh installs
+# - manage: always apply starter channel/model bootstrap updates
+# - preserve: skip optional channel/model bootstrap updates
+openclaw_config_mode = "auto"
+
+# Primary channel plugin to bootstrap.
+agent_channel = "telegram" # "telegram" or "whatsapp"
+
+# REQUIRED: explicitly choose model providers + model routing.
+# Terraform apply will fail if these are omitted.
+model_providers_enabled = [
+  "anthropic",
+  "google",
+]
+default_model = "anthropic/claude-haiku-4-5"
+fallback_models = [
+  "google/gemini-3-flash-preview",
+  "anthropic/claude-sonnet-4-6",
+]
+
 # OpenClaw image tag — pin to a specific version for reproducibility
 openclaw_version = "latest"
 
 # Optional Node.js runtime flags for OpenClaw container.
 # Keep a memory cap on small instances to avoid startup OOM on newer builds.
 openclaw_node_options = "--max-old-space-size=1536"
+
+# Seed starter workspace files into /home/node/.openclaw/workspace (create-if-missing).
+seed_starter_workspace_files = true
+starter_soul_profile         = "balanced" # balanced | builder | researcher
 
 # Optional: set a fixed gateway token. Leave blank to auto-generate one that
 # Terraform stores in state and prints in outputs.

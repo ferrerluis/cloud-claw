@@ -27,7 +27,7 @@ write_files:
             - "127.0.0.1:18793:18793"
           volumes:
             - /opt/openclaw/data:/home/node/.openclaw
-            - /opt/openclaw/workspace:/home/node/openclaw/workspace
+            - /opt/openclaw/data/workspace:/home/node/.openclaw/workspace
           healthcheck:
             test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
             interval: 30s
@@ -62,7 +62,7 @@ write_files:
       #    restart: unless-stopped
       #    depends_on: [openclaw]
       #    volumes:
-      #      - /opt/openclaw/workspace:/data
+      #      - /opt/openclaw/data/workspace:/data
       #      - /root/.config/rclone:/config/rclone:ro
       #    command:
       #      - sync
@@ -93,6 +93,43 @@ write_files:
       TAILSCALE_AUTH_KEY=${tailscale_auth_key}
       TAILSCALE_HOSTNAME=${project_name}
 %{ endif }
+
+  #  Starter workspace templates (seeded create-if-missing by install script)
+  - path: /opt/openclaw/templates/SOUL.balanced.md
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${replace(starter_soul_balanced_md, "\n", "\n      ")}
+
+  - path: /opt/openclaw/templates/SOUL.builder.md
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${replace(starter_soul_builder_md, "\n", "\n      ")}
+
+  - path: /opt/openclaw/templates/SOUL.researcher.md
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${replace(starter_soul_researcher_md, "\n", "\n      ")}
+
+  - path: /opt/openclaw/templates/AGENTS.default.md
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${replace(starter_agents_md, "\n", "\n      ")}
+
+  - path: /opt/openclaw/templates/TOOLS.default.md
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${replace(starter_tools_md, "\n", "\n      ")}
+
+  - path: /opt/openclaw/templates/USER.default.md
+    permissions: "0644"
+    owner: root:root
+    content: |
+      ${replace(starter_user_md, "\n", "\n      ")}
 
 
 %{ if tailscale_enabled }
@@ -250,7 +287,7 @@ write_files:
       set -euo pipefail
       exec >> /var/log/openclaw-bootstrap.log 2>&1
 
-      mkdir -p /opt/openclaw/data /opt/openclaw/workspace /opt/openclaw/tailscale-state
+      mkdir -p /opt/openclaw/data /opt/openclaw/data/workspace /opt/openclaw/tailscale-state
 
 %{~ if provider_type == "aws" ~}
       #  AWS: find EBS volume by NVMe serial 
@@ -323,7 +360,7 @@ write_files:
       fi
 
       # OpenClaw runs as uid/gid 1000 (node user inside the container)
-      chown -R 1000:1000 /opt/openclaw/data /opt/openclaw/workspace
+      chown -R 1000:1000 /opt/openclaw/data
       echo "[volume] Mount complete."
 
   #  Main bootstrap script 
@@ -412,6 +449,75 @@ write_files:
 
       configure_swap
 
+      OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
+      OPENCLAW_CONFIG_MODE_INPUT="${openclaw_config_mode}"
+      PREEXISTING_OPENCLAW_CONFIG=0
+      if [ -f "$OPENCLAW_CONFIG" ]; then
+        PREEXISTING_OPENCLAW_CONFIG=1
+      fi
+      case "$OPENCLAW_CONFIG_MODE_INPUT" in
+        manage|preserve)
+          OPENCLAW_CONFIG_MODE_EFFECTIVE="$OPENCLAW_CONFIG_MODE_INPUT"
+          ;;
+        auto)
+          if [ "$PREEXISTING_OPENCLAW_CONFIG" = "1" ]; then
+            OPENCLAW_CONFIG_MODE_EFFECTIVE="preserve"
+          else
+            OPENCLAW_CONFIG_MODE_EFFECTIVE="manage"
+          fi
+          ;;
+        *)
+          OPENCLAW_CONFIG_MODE_EFFECTIVE="manage"
+          ;;
+      esac
+      AGENT_CHANNEL="${agent_channel}"
+      MODEL_PROVIDERS_ENABLED_JSON='${model_providers_enabled_json}'
+      DEFAULT_MODEL_REF='${default_model}'
+      FALLBACK_MODELS_JSON='${fallback_models_json}'
+      TELEGRAM_ALLOW_FROM_JSON='${telegram_allow_from_json}'
+      STARTER_SOUL_PROFILE='${starter_soul_profile}'
+      SHOULD_SEED_STARTER_FILES='${seed_starter_workspace_files}'
+
+      echo "[config] openclaw_config_mode=$OPENCLAW_CONFIG_MODE_INPUT effective=$OPENCLAW_CONFIG_MODE_EFFECTIVE preexisting_config=$PREEXISTING_OPENCLAW_CONFIG"
+      echo "[config] agent_channel=$AGENT_CHANNEL starter_soul_profile=$STARTER_SOUL_PROFILE"
+
+      seed_file_if_missing() {
+        local source="$1"
+        local destination="$2"
+        if [ -f "$destination" ]; then
+          echo "[starter] Keeping existing file: $destination"
+          return 0
+        fi
+        install -D -m 0644 "$source" "$destination"
+        chown 1000:1000 "$destination" || true
+        echo "[starter] Seeded: $destination"
+      }
+
+      seed_starter_workspace_files() {
+        if [ "$SHOULD_SEED_STARTER_FILES" != "true" ]; then
+          echo "[starter] Skipped (seed_starter_workspace_files=$SHOULD_SEED_STARTER_FILES)."
+          return 0
+        fi
+
+        local workspace_dir="/opt/openclaw/data/workspace"
+        local soul_source="/opt/openclaw/templates/SOUL.balanced.md"
+        case "$STARTER_SOUL_PROFILE" in
+          builder)
+            soul_source="/opt/openclaw/templates/SOUL.builder.md"
+            ;;
+          researcher)
+            soul_source="/opt/openclaw/templates/SOUL.researcher.md"
+            ;;
+        esac
+
+        mkdir -p "$workspace_dir"
+        chown 1000:1000 "$workspace_dir" || true
+        seed_file_if_missing "$soul_source" "$workspace_dir/SOUL.md"
+        seed_file_if_missing "/opt/openclaw/templates/AGENTS.default.md" "$workspace_dir/AGENTS.md"
+        seed_file_if_missing "/opt/openclaw/templates/TOOLS.default.md" "$workspace_dir/TOOLS.md"
+        seed_file_if_missing "/opt/openclaw/templates/USER.default.md" "$workspace_dir/USER.md"
+      }
+
       # 5. Start OpenClaw
       echo "[openclaw] Enabling and starting OpenClaw service..."
       systemctl daemon-reload
@@ -435,6 +541,14 @@ write_files:
         return 1
       }
 
+      wait_for_openclaw_config() {
+        for attempt in $(seq 1 60); do
+          [ -f "$OPENCLAW_CONFIG" ] && return 0
+          sleep 2
+        done
+        return 1
+      }
+
       mark_openclaw_restart_needed() {
         NEEDS_RESTART=1
       }
@@ -448,56 +562,6 @@ write_files:
         fi
       }
 
-      # 5. Install/enable required plugins for channel + ACP workflows
-      echo "[plugins] Installing/enabling plugins (acpx, whatsapp, telegram)..."
-      PLUGINS_RESTART_NEEDED=0
-      if wait_openclaw_healthy; then
-        ACPX_INSTALL_LOG="/tmp/openclaw-plugin-install-acpx.log"
-        ACPX_INSTALL_OK=0
-        for attempt in $(seq 1 5); do
-          if run_openclaw_cli plugins install acpx >"$ACPX_INSTALL_LOG" 2>&1; then
-            echo "[plugins] acpx plugin installed."
-            ACPX_INSTALL_OK=1
-            PLUGINS_RESTART_NEEDED=1
-            break
-          fi
-          if grep -qi "already installed" "$ACPX_INSTALL_LOG"; then
-            echo "[plugins] acpx plugin already installed."
-            ACPX_INSTALL_OK=1
-            break
-          fi
-          sleep 3
-        done
-        if [ "$ACPX_INSTALL_OK" != "1" ]; then
-          echo "[plugins] WARNING: Failed to install acpx plugin after retries."
-          tail -n 5 "$ACPX_INSTALL_LOG" || true
-        fi
-
-        for plugin in acpx whatsapp telegram; do
-          PLUGIN_ENABLE_LOG="/tmp/openclaw-plugin-enable-$plugin.log"
-          ENABLE_OK=0
-          for attempt in $(seq 1 10); do
-            if run_openclaw_cli plugins enable "$plugin" >"$PLUGIN_ENABLE_LOG" 2>&1; then
-              echo "[plugins] $plugin plugin enabled."
-              ENABLE_OK=1
-              PLUGINS_RESTART_NEEDED=1
-              break
-            fi
-            sleep 3
-          done
-          if [ "$ENABLE_OK" != "1" ]; then
-            echo "[plugins] WARNING: Failed to enable $plugin plugin after retries."
-            tail -n 5 "$PLUGIN_ENABLE_LOG" || true
-          fi
-        done
-        if [ "$PLUGINS_RESTART_NEEDED" = "1" ]; then
-          echo "[plugins] Plugin changes detected; scheduling a deferred OpenClaw restart."
-          mark_openclaw_restart_needed
-        fi
-      else
-        echo "[plugins] WARNING: OpenClaw did not become ready in time; skipping plugin enable."
-      fi
-
       OPENCLAW_ENV_FILE="/opt/openclaw/.env"
       env_value() {
         local key="$1"
@@ -510,203 +574,230 @@ write_files:
         [ -n "$value" ]
       }
 
-      # 6. Preconfigure Telegram bot token (optional)
-      TELEGRAM_ALLOW_FROM_JSON='${telegram_allow_from_json}'
-      if has_env_key TELEGRAM_BOT_TOKEN; then
-        echo "[telegram] Configuring channels.telegram.botToken..."
-        OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
-        TELEGRAM_TOKEN=$(env_value TELEGRAM_BOT_TOKEN)
-        if [ -f "$OPENCLAW_CONFIG" ]; then
-          TMP_CONFIG=$(mktemp)
-          if jq --arg token "$TELEGRAM_TOKEN" --argjson allow_from "$TELEGRAM_ALLOW_FROM_JSON" '.channels = (.channels // {}) | .channels.telegram = ((.channels.telegram // {}) + { enabled: true, botToken: $token, streaming: "off" }) | if (($allow_from | type) == "array" and ($allow_from | length) > 0) then .channels.telegram.allowFrom = $allow_from else . end' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
-            if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
-              mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
-              chown 1000:1000 "$OPENCLAW_CONFIG" || true
-              echo "[telegram] Telegram channel config updated."
-              mark_openclaw_restart_needed
-            else
-              rm -f "$TMP_CONFIG"
-              echo "[telegram] Telegram channel config already up to date."
-            fi
-          else
-            rm -f "$TMP_CONFIG"
-            echo "[telegram] WARNING: Failed to update Telegram channel config."
-          fi
-        else
-          echo "[telegram] WARNING: $OPENCLAW_CONFIG not found; skipped Telegram setup."
-        fi
+      # Seed starter files only after OpenClaw has initialized once, so any
+      # OpenClaw-native first-run files are preserved and take precedence.
+      if wait_openclaw_healthy; then
+        seed_starter_workspace_files
       else
-        echo "[telegram] No TELEGRAM_BOT_TOKEN provided; skipping Telegram pre-setup."
-        if [ "$TELEGRAM_ALLOW_FROM_JSON" != "[]" ]; then
-          echo "[telegram] NOTE: telegram_allow_from was provided but TELEGRAM_BOT_TOKEN is missing; allowlist was not applied."
-        fi
+        echo "[starter] WARNING: OpenClaw did not become healthy; skipping starter file seed to avoid clobbering first-run files."
       fi
 
-      # 7. Configure context pruning defaults to prevent oversized sessions
-      echo "[pruning] Configuring agents.defaults.contextPruning..."
-      OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
-      if [ -f "$OPENCLAW_CONFIG" ]; then
-        TMP_CONFIG=$(mktemp)
-        if jq '.agents = (.agents // {}) | .agents.defaults = ((.agents.defaults // {}) + { contextPruning: { mode: "cache-ttl", ttl: "5m", keepLastAssistants: 3, softTrimRatio: 0.3, hardClearRatio: 0.5, minPrunableToolChars: 50000, softTrim: { maxChars: 4000, headChars: 1500, tailChars: 1500 }, hardClear: { enabled: true, placeholder: "[Old tool result content cleared]" } } })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
-          if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
-            mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
-            chown 1000:1000 "$OPENCLAW_CONFIG" || true
-            echo "[pruning] Context pruning config updated."
-            mark_openclaw_restart_needed
-          else
-            rm -f "$TMP_CONFIG"
-            echo "[pruning] Context pruning config already up to date."
-          fi
-        else
-          rm -f "$TMP_CONFIG"
-          echo "[pruning] WARNING: Failed to update context pruning config."
-        fi
-      else
-        echo "[pruning] WARNING: $OPENCLAW_CONFIG not found; skipped context pruning setup."
-      fi
+      config_customizations_enabled() {
+        [ "$OPENCLAW_CONFIG_MODE_EFFECTIVE" = "manage" ]
+      }
 
-      # 8. Configure multi-agent + ACP defaults
-      echo "[agents] Configuring session visibility, agent-to-agent policy, and ACP defaults..."
-      OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
-      if [ -f "$OPENCLAW_CONFIG" ]; then
-        TMP_CONFIG=$(mktemp)
-        if jq '
-          def upsert_agent($agent):
-            .agents.list = (
-              (.agents.list // []) as $list
-              | if ($list | map(.id) | index($agent.id)) != null
-                then ($list | map(if .id == $agent.id then (. * $agent) else . end))
-                else ($list + [$agent])
-                end
-            );
+      provider_selected() {
+        local provider="$1"
+        printf '%s' "$MODEL_PROVIDERS_ENABLED_JSON" | jq -e --arg provider "$provider" 'index($provider) != null' >/dev/null 2>&1
+      }
 
-          .tools = (.tools // {})
-          | .tools.sessions = ((.tools.sessions // {}) + { visibility: "tree" })
-          | .tools.agentToAgent = ((.tools.agentToAgent // {}) + { enabled: true, allow: ["researcher", "coder"] })
-          | .agents = (.agents // {})
-          | .agents.defaults = (.agents.defaults // {})
-          | .agents.defaults.sandbox = ((.agents.defaults.sandbox // {}) + { sessionToolsVisibility: "spawned" })
-          | .acp = (.acp // {})
-          | .acp.enabled = true
-          | .acp.dispatch = ((.acp.dispatch // {}) + { enabled: true })
-          | .acp.backend = "acpx"
-          | .acp.defaultAgent = "codex"
-          | .acp.allowedAgents = ["codex"]
-          | .plugins = (.plugins // {})
-          | .plugins.entries = (.plugins.entries // {})
-          | .plugins.entries.acpx = ((.plugins.entries.acpx // {}) + { enabled: true })
-          | .plugins.entries.acpx.config = ((.plugins.entries.acpx.config // {}) + { permissionMode: "approve-all", nonInteractivePermissions: "fail" })
-          | upsert_agent({
-              id: "main",
-              subagents: { allowAgents: ["researcher", "coder"] }
-            })
-          | upsert_agent({
-              id: "researcher"
-            })
-          | upsert_agent({
-              id: "coder",
-              runtime: {
-                type: "acp",
-                acp: { agent: "codex", backend: "acpx", mode: "persistent" }
-              }
-            })
-        ' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
-          if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
-            mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
-            chown 1000:1000 "$OPENCLAW_CONFIG" || true
-            echo "[agents] Multi-agent + ACP defaults updated."
-            mark_openclaw_restart_needed
-          else
-            rm -f "$TMP_CONFIG"
-            echo "[agents] Multi-agent + ACP defaults already up to date."
-          fi
-        else
-          rm -f "$TMP_CONFIG"
-          echo "[agents] WARNING: Failed to update multi-agent + ACP defaults."
-        fi
-      else
-        echo "[agents] WARNING: $OPENCLAW_CONFIG not found; skipped multi-agent + ACP setup."
-      fi
+      model_provider_from_ref() {
+        local model_ref="$1"
+        local raw_provider
+        raw_provider="$${model_ref%%/*}"
+        case "$raw_provider" in
+          openai-codex)
+            echo "openai"
+            ;;
+          *)
+            echo "$raw_provider"
+            ;;
+        esac
+      }
 
-      # 9. Register Anthropic setup-token so native anthropic/* models are authenticated.
-      #     Uses `onboard --non-interactive` which works headless (no TTY required).
-      #     Token value is substituted by Terraform at render time; skipped if unset.
-      if has_env_key ANTHROPIC_AUTH_KEY; then
-        echo "[anthropic] Registering Anthropic setup-token..."
-        if wait_openclaw_healthy; then
-          if docker exec openclaw-openclaw-1 openclaw onboard --non-interactive \
-              --auth-choice token \
-              --token-provider anthropic \
-              --token "${anthropic_auth_key}" \
-              --token-expires-in 365d; then
-            echo "[anthropic] Setup-token registered successfully."
-          else
-            echo "[anthropic] WARNING: onboard --non-interactive command failed."
-          fi
-        else
-          echo "[anthropic] WARNING: OpenClaw not healthy; skipped token registration."
-        fi
-      else
-        echo "[anthropic] Skipped: ANTHROPIC_AUTH_KEY not set."
-      fi
+      provider_has_credentials() {
+        local provider="$1"
+        case "$provider" in
+          anthropic)
+            has_env_key ANTHROPIC_AUTH_KEY
+            ;;
+          openai)
+            has_env_key OPENAI_API_KEY
+            ;;
+          google)
+            has_env_key GEMINI_API_KEY
+            ;;
+          groq)
+            has_env_key GROQ_API_KEY
+            ;;
+          *)
+            return 1
+            ;;
+        esac
+      }
 
-      # 10. Configure model defaults/fallbacks
-      echo "[models] Configuring model defaults and fallbacks..."
       model_exists() {
         local model_ref="$1"
         printf '%s\n' "$MODEL_CATALOG" | grep -Fxq "$model_ref"
       }
-      add_fallback_model() {
+
+      model_is_usable() {
         local model_ref="$1"
-        if run_openclaw_cli models fallbacks add "$model_ref" >/tmp/openclaw-models-fallback-add.log 2>&1; then
-          echo "[models] Added fallback: $model_ref"
+        local provider
+        provider=$(model_provider_from_ref "$model_ref")
+
+        if ! provider_selected "$provider"; then
+          echo "[models] WARNING: Skipping $model_ref because provider '$provider' was not selected."
+          return 1
+        fi
+        if ! provider_has_credentials "$provider"; then
+          echo "[models] WARNING: Skipping $model_ref because provider '$provider' credentials are missing."
+          return 1
+        fi
+        if ! model_exists "$model_ref"; then
+          echo "[models] WARNING: Skipping $model_ref because it is unavailable in the model catalog."
+          return 1
+        fi
+        return 0
+      }
+
+      ensure_plugin_enabled() {
+        local plugin="$1"
+        local install_log="/tmp/openclaw-plugin-install-$plugin.log"
+        local enable_log="/tmp/openclaw-plugin-enable-$plugin.log"
+
+        for attempt in $(seq 1 5); do
+          if run_openclaw_cli plugins install "$plugin" >"$install_log" 2>&1; then
+            break
+          fi
+          if grep -qi "already installed" "$install_log"; then
+            break
+          fi
+          sleep 3
+        done
+
+        for attempt in $(seq 1 10); do
+          if run_openclaw_cli plugins enable "$plugin" >"$enable_log" 2>&1; then
+            echo "[plugins] $plugin plugin enabled."
+            mark_openclaw_restart_needed
+            return 0
+          fi
+          if grep -qi "already enabled" "$enable_log"; then
+            echo "[plugins] $plugin plugin already enabled."
+            return 0
+          fi
+          sleep 3
+        done
+
+        echo "[plugins] WARNING: Failed to enable plugin $plugin after retries."
+        tail -n 5 "$enable_log" || true
+        return 1
+      }
+
+      configure_telegram_channel() {
+        if ! wait_for_openclaw_config; then
+          echo "[telegram] WARNING: $OPENCLAW_CONFIG not found; skipped Telegram setup."
+          return 1
+        fi
+
+        local token
+        token=$(env_value TELEGRAM_BOT_TOKEN)
+        local tmp_config
+        tmp_config=$(mktemp)
+        if jq --arg token "$token" --argjson allow_from "$TELEGRAM_ALLOW_FROM_JSON" '.channels = (.channels // {}) | .channels.telegram = ((.channels.telegram // {}) + { enabled: true, botToken: $token, streaming: "off" }) | if (($allow_from | type) == "array" and ($allow_from | length) > 0) then .channels.telegram.allowFrom = $allow_from else . end' "$OPENCLAW_CONFIG" > "$tmp_config"; then
+          if ! cmp -s "$tmp_config" "$OPENCLAW_CONFIG"; then
+            mv "$tmp_config" "$OPENCLAW_CONFIG"
+            chown 1000:1000 "$OPENCLAW_CONFIG" || true
+            echo "[telegram] Telegram channel config updated."
+            mark_openclaw_restart_needed
+          else
+            rm -f "$tmp_config"
+            echo "[telegram] Telegram channel config already up to date."
+          fi
         else
-          echo "[models] WARNING: Failed to add fallback: $model_ref"
-          tail -n 5 /tmp/openclaw-models-fallback-add.log || true
+          rm -f "$tmp_config"
+          echo "[telegram] WARNING: Failed to update Telegram channel config."
+          return 1
         fi
       }
 
-      if wait_openclaw_healthy; then
-        MODEL_CATALOG=$(run_openclaw_cli models list --all --plain 2>/dev/null || true)
-        DEFAULT_MODEL="anthropic/claude-haiku-4-5"
-        GEMINI_FLASH_MODEL="google/gemini-3-flash-preview"
-        SONNET_MODEL="anthropic/claude-sonnet-4-6"
-        OPUS_MODEL="anthropic/claude-opus-4-6"
+      if config_customizations_enabled; then
+        echo "[config] Applying optional channel and model bootstrap customizations."
 
-        if has_env_key ANTHROPIC_AUTH_KEY && model_exists "$DEFAULT_MODEL"; then
-          if run_openclaw_cli models set "$DEFAULT_MODEL" >/tmp/openclaw-models-set.log 2>&1; then
-            echo "[models] Default model set: $DEFAULT_MODEL"
-            if run_openclaw_cli models fallbacks clear >/tmp/openclaw-models-fallback-clear.log 2>&1; then
-              echo "[models] Cleared existing fallbacks."
+        if wait_openclaw_healthy; then
+          case "$AGENT_CHANNEL" in
+            telegram)
+              if has_env_key TELEGRAM_BOT_TOKEN; then
+                ensure_plugin_enabled "telegram" || true
+                configure_telegram_channel || true
+              else
+                echo "[plugins] WARNING: agent_channel=telegram but TELEGRAM_BOT_TOKEN is missing; skipping Telegram plugin/config setup."
+                if [ "$TELEGRAM_ALLOW_FROM_JSON" != "[]" ]; then
+                  echo "[telegram] NOTE: telegram_allow_from was provided but TELEGRAM_BOT_TOKEN is missing; allowlist was not applied."
+                fi
+              fi
+              ;;
+            whatsapp)
+              ensure_plugin_enabled "whatsapp" || true
+              ;;
+          esac
+        else
+          echo "[plugins] WARNING: OpenClaw did not become ready in time; skipping plugin setup."
+        fi
+
+        # Register Anthropic setup-token only when anthropic provider is selected.
+        if provider_selected "anthropic"; then
+          if has_env_key ANTHROPIC_AUTH_KEY; then
+            echo "[anthropic] Registering Anthropic setup-token..."
+            if wait_openclaw_healthy; then
+              if docker exec openclaw-openclaw-1 openclaw onboard --non-interactive \
+                  --auth-choice token \
+                  --token-provider anthropic \
+                  --token "${anthropic_auth_key}" \
+                  --token-expires-in 365d; then
+                echo "[anthropic] Setup-token registered successfully."
+              else
+                echo "[anthropic] WARNING: onboard --non-interactive command failed."
+              fi
             else
-              echo "[models] WARNING: Failed to clear existing fallbacks."
-              tail -n 5 /tmp/openclaw-models-fallback-clear.log || true
-            fi
-
-            # Fallback priority:
-            # 1) Gemini Flash  2) Claude Sonnet  3) Claude Opus
-            if has_env_key GEMINI_API_KEY && model_exists "$GEMINI_FLASH_MODEL"; then
-              add_fallback_model "$GEMINI_FLASH_MODEL"
-            fi
-            if has_env_key ANTHROPIC_AUTH_KEY && model_exists "$SONNET_MODEL"; then
-              add_fallback_model "$SONNET_MODEL"
-            fi
-            if has_env_key ANTHROPIC_AUTH_KEY && model_exists "$OPUS_MODEL"; then
-              add_fallback_model "$OPUS_MODEL"
+              echo "[anthropic] WARNING: OpenClaw not healthy; skipped token registration."
             fi
           else
-            echo "[models] WARNING: Failed to set default model: $DEFAULT_MODEL"
-            tail -n 5 /tmp/openclaw-models-set.log || true
+            echo "[anthropic] WARNING: Provider anthropic selected, but ANTHROPIC_AUTH_KEY is missing."
           fi
         else
-          echo "[models] Skipped: ANTHROPIC_AUTH_KEY missing or $DEFAULT_MODEL unavailable in catalog."
+          echo "[anthropic] Provider not selected; skipping setup-token registration."
+        fi
+
+        echo "[models] Configuring user-selected model defaults and fallbacks..."
+        if wait_openclaw_healthy; then
+          MODEL_CATALOG=$(run_openclaw_cli models list --all --plain 2>/dev/null || true)
+          if model_is_usable "$DEFAULT_MODEL_REF"; then
+            if run_openclaw_cli models set "$DEFAULT_MODEL_REF" >/tmp/openclaw-models-set.log 2>&1; then
+              echo "[models] Default model set: $DEFAULT_MODEL_REF"
+              if run_openclaw_cli models fallbacks clear >/tmp/openclaw-models-fallback-clear.log 2>&1; then
+                echo "[models] Cleared existing fallbacks."
+              else
+                echo "[models] WARNING: Failed to clear existing fallbacks."
+                tail -n 5 /tmp/openclaw-models-fallback-clear.log || true
+              fi
+
+              while IFS= read -r fallback_model; do
+                [ -n "$fallback_model" ] || continue
+                if model_is_usable "$fallback_model"; then
+                  if run_openclaw_cli models fallbacks add "$fallback_model" >/tmp/openclaw-models-fallback-add.log 2>&1; then
+                    echo "[models] Added fallback: $fallback_model"
+                  else
+                    echo "[models] WARNING: Failed to add fallback: $fallback_model"
+                    tail -n 5 /tmp/openclaw-models-fallback-add.log || true
+                  fi
+                fi
+              done < <(printf '%s' "$FALLBACK_MODELS_JSON" | jq -r '.[]')
+            else
+              echo "[models] WARNING: Failed to set default model: $DEFAULT_MODEL_REF"
+              tail -n 5 /tmp/openclaw-models-set.log || true
+            fi
+          fi
+        else
+          echo "[models] WARNING: OpenClaw not ready; skipped model configuration."
         fi
       else
-        echo "[models] WARNING: OpenClaw not ready; skipped model configuration."
+        echo "[config] Config mode is '$OPENCLAW_CONFIG_MODE_EFFECTIVE'; skipping optional channel and model customizations."
       fi
 
+      TAILSCALE_DNS=""
 %{ if tailscale_enabled }
-      # 10. Read Tailscale sidecar status and Serve URL
+      # 6. Read Tailscale sidecar status and Serve URL
       echo "[tailscale] Waiting for Tailscale sidecar..."
       TS_CONTAINER_ID=""
       for attempt in $(seq 1 40); do
@@ -720,22 +811,6 @@ write_files:
       if [ -n "$TS_CONTAINER_ID" ]; then
         TAILSCALE_DNS=$(docker exec "$TS_CONTAINER_ID" tailscale --socket=/tmp/tailscaled.sock status --json 2>/dev/null | jq -r '.Self.DNSName // empty' || true)
         TAILSCALE_DNS="$${TAILSCALE_DNS%.}"
-        OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
-        ORIGINS_JSON=$(printf '%s\n' "https://${project_name}" "https://$TAILSCALE_DNS" "http://127.0.0.1:18789" "http://localhost:18789" | sed '/^https:\/\/$/d' | awk '!seen[$0]++' | jq -R . | jq -s .)
-        if [ -f "$OPENCLAW_CONFIG" ]; then
-          TMP_CONFIG=$(mktemp)
-          if jq --argjson origins "$ORIGINS_JSON" --arg gateway_token "${gateway_token}" '.gateway = (.gateway // {}) | .gateway.auth = ((.gateway.auth // {}) + { mode: "token", token: $gateway_token }) | .gateway.controlUi = ((.gateway.controlUi // {}) + { allowedOrigins: $origins })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
-            mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
-            chown 1000:1000 "$OPENCLAW_CONFIG" || true
-            echo "[openclaw] Updated gateway.auth.token and gateway.controlUi.allowedOrigins."
-            mark_openclaw_restart_needed
-          else
-            rm -f "$TMP_CONFIG"
-            echo "[openclaw] WARNING: Failed to update gateway.controlUi.allowedOrigins."
-          fi
-        else
-          echo "[openclaw] WARNING: $OPENCLAW_CONFIG not found; skipped allowedOrigins update."
-        fi
         if [ -n "$TAILSCALE_DNS" ]; then
           echo "[tailscale] Serve URL: https://$TAILSCALE_DNS"
         else
@@ -745,6 +820,38 @@ write_files:
         echo "[tailscale] WARNING: Tailscale sidecar container not detected."
       fi
 %{ endif }
+
+      # 7. Always refresh gateway token and allowed origins.
+      echo "[openclaw] Refreshing gateway token and gateway.controlUi.allowedOrigins..."
+      PROJECT_ORIGIN=""
+%{ if tailscale_enabled }
+      PROJECT_ORIGIN="https://${project_name}"
+%{ endif }
+      if wait_for_openclaw_config; then
+        ORIGINS_JSON=$(jq -nc --arg project_origin "$PROJECT_ORIGIN" --arg tailscale_dns "$TAILSCALE_DNS" '[
+          "http://127.0.0.1:18789",
+          "http://localhost:18789",
+          (if $project_origin != "" then $project_origin else empty end),
+          (if $tailscale_dns != "" then "https://" + $tailscale_dns else empty end)
+        ] | unique')
+        TMP_CONFIG=$(mktemp)
+        if jq --argjson origins "$ORIGINS_JSON" --arg gateway_token "${gateway_token}" '.gateway = (.gateway // {}) | .gateway.auth = ((.gateway.auth // {}) + { mode: "token", token: $gateway_token }) | .gateway.controlUi = ((.gateway.controlUi // {}) + { allowedOrigins: $origins })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
+          if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
+            mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
+            chown 1000:1000 "$OPENCLAW_CONFIG" || true
+            echo "[openclaw] Updated gateway.auth.token and gateway.controlUi.allowedOrigins."
+            mark_openclaw_restart_needed
+          else
+            rm -f "$TMP_CONFIG"
+            echo "[openclaw] Gateway config already up to date."
+          fi
+        else
+          rm -f "$TMP_CONFIG"
+          echo "[openclaw] WARNING: Failed to update gateway config."
+        fi
+      else
+        echo "[openclaw] WARNING: $OPENCLAW_CONFIG not found; skipped gateway config update."
+      fi
 
       if [ "$NEEDS_RESTART" = "1" ]; then
         echo "[openclaw] Applying accumulated config changes with one final restart..."

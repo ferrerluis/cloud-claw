@@ -69,11 +69,18 @@ module "aws" {
   gemini_api_key                       = var.gemini_api_key
   telegram_bot_token                   = var.telegram_bot_token
   telegram_allow_from                  = var.telegram_allow_from
+  openclaw_config_mode                 = var.openclaw_config_mode
+  agent_channel                        = var.agent_channel
+  model_providers_enabled              = var.model_providers_enabled
+  default_model                        = var.default_model
+  fallback_models                      = var.fallback_models
   openclaw_version                     = var.openclaw_version
   openclaw_node_options                = var.openclaw_node_options
   openclaw_swap_size_mb                = var.openclaw_swap_size_mb
   openclaw_health_start_period_seconds = var.openclaw_health_start_period_seconds
   openclaw_health_retries              = var.openclaw_health_retries
+  seed_starter_workspace_files         = var.seed_starter_workspace_files
+  starter_soul_profile                 = var.starter_soul_profile
   gateway_token                        = local.resolved_gateway_token
 
   tailscale_enabled  = var.tailscale_enabled
@@ -107,11 +114,18 @@ module "digitalocean" {
   gemini_api_key                       = var.gemini_api_key
   telegram_bot_token                   = var.telegram_bot_token
   telegram_allow_from                  = var.telegram_allow_from
+  openclaw_config_mode                 = var.openclaw_config_mode
+  agent_channel                        = var.agent_channel
+  model_providers_enabled              = var.model_providers_enabled
+  default_model                        = var.default_model
+  fallback_models                      = var.fallback_models
   openclaw_version                     = var.openclaw_version
   openclaw_node_options                = var.openclaw_node_options
   openclaw_swap_size_mb                = var.openclaw_swap_size_mb
   openclaw_health_start_period_seconds = var.openclaw_health_start_period_seconds
   openclaw_health_retries              = var.openclaw_health_retries
+  seed_starter_workspace_files         = var.seed_starter_workspace_files
+  starter_soul_profile                 = var.starter_soul_profile
   gateway_token                        = local.resolved_gateway_token
 
   tailscale_enabled  = var.tailscale_enabled

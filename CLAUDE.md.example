@@ -32,7 +32,7 @@ terraform output -raw repo_bootstrap_log_command
 - Compose file: `/opt/openclaw/docker-compose.yml`
 - Env file: `/opt/openclaw/.env`
 - Data/config volume: `/opt/openclaw/data`
-- Workspace volume: `/opt/openclaw/workspace`
+- Workspace volume: `/opt/openclaw/data/workspace`
 - Bootstrap log: `/var/log/openclaw-bootstrap.log`
 
 ## Discover Runtime Container Names

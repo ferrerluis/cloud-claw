@@ -28,20 +28,19 @@ On first boot, `cloud-init` runs a script that:
 4. Creates and starts a `systemd` service (`openclaw`) that runs `docker compose up`
 5. If enabled, starts a Tailscale sidecar container (shared network namespace with OpenClaw) that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
 6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste
-7. Installs/enables required plugins: `acpx` (for ACP), `whatsapp`, and `telegram`
-8. If `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
+7. Applies `openclaw_config_mode`:
+   - `auto` (default): preserve an existing `openclaw.json`, manage fresh installs
+   - `manage`: always apply starter channel/model bootstrap changes
+   - `preserve`: skip optional channel/model bootstrap changes
+8. After OpenClaw first-run initialization, seeds starter workspace files (create-if-missing) in `/home/node/.openclaw/workspace`: `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `USER.md`
+9. Installs/enables only the selected `agent_channel` plugin (`telegram` or `whatsapp`)
+10. If `agent_channel = "telegram"` and `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
    - If `telegram_allow_from` is non-empty, writes `channels.telegram.allowFrom` with those pre-approved user IDs
-9. Sets `agents.defaults.contextPruning` to `cache-ttl` defaults to reduce oversized tool/session context on long-running chats
-10. Applies multi-agent + ACP defaults for `main`/`researcher`/`coder`:
-   - `tools.sessions.visibility = "tree"` and `agents.defaults.sandbox.sessionToolsVisibility = "spawned"`
-   - `tools.agentToAgent.enabled = true` with allowlist `["researcher","coder"]`
-   - ACP defaults: `acp.enabled = true`, `acp.dispatch.enabled = true`, `acp.backend = "acpx"`, `acp.defaultAgent = "codex"`, `acp.allowedAgents = ["codex"]`
-   - ACP plugin defaults: `plugins.entries.acpx.config.permissionMode = "approve-all"` and `nonInteractivePermissions = "fail"`
-   - Ensures `main.subagents.allowAgents = ["researcher","coder"]` and pins `coder.runtime` to ACP (`codex`)
-11. If `ANTHROPIC_AUTH_KEY` is set, registers a Claude Code setup-token with OpenClaw's native `anthropic` provider
-12. Configures model routing defaults:
-    - Primary: Claude Haiku 4.5 (`anthropic/claude-haiku-4-5`)
-    - Fallbacks (when provider key/model is present): Gemini Flash, Claude Sonnet 4.6, Claude Opus 4.6
+11. Registers `ANTHROPIC_AUTH_KEY` only when the `anthropic` provider is selected
+12. Configures only user-selected model routing:
+    - required `default_model`
+    - ordered `fallback_models`
+    - restricted to explicitly selected `model_providers_enabled`
 
 OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — never publicly exposed.
 
@@ -69,6 +68,7 @@ cd cloud-claw
 # 2. Create your variables file (never commit this)
 cp terraform.tfvars.example terraform.tfvars
 $EDITOR terraform.tfvars        # fill in credentials, keys, etc.
+# Required before apply: model_providers_enabled, default_model, fallback_models
 
 # 3. Initialise
 terraform init
@@ -134,7 +134,7 @@ bin/cloud-claw-ssh-clean
 2. Once the server finishes bootstrapping (~2-3 min), open `dashboard_url_with_token_import` from Terraform output for first-time login.
 3. If prompted for pairing approval, run `pair_latest_command` once.
 4. Afterwards, you can use **https://openclaw** directly.
-5. Model defaults are pre-seeded when matching API keys are present. If you include Codex fallback, complete one-time `openai-codex` auth to make that fallback usable.
+5. Model routing is configured from your required `default_model` + `fallback_models` selection, limited to providers listed in `model_providers_enabled`.
 
 ### Without Tailscale (SSH tunnel)
 
@@ -228,11 +228,18 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `gemini_api_key` | `""` | Google Gemini API key |
 | `telegram_bot_token` | `""` | Optional Telegram BotFather token to preconfigure `channels.telegram.botToken` |
 | `telegram_allow_from` | `[]` | Optional list of pre-approved Telegram user IDs for `channels.telegram.allowFrom` |
+| `openclaw_config_mode` | `"auto"` | Bootstrap config behavior: auto (preserve existing/manage fresh), manage, or preserve |
+| `agent_channel` | `"telegram"` | Channel plugin bootstrap target (`telegram` or `whatsapp`) |
+| `model_providers_enabled` | **required** | Explicit provider allowlist for model bootstrap (`anthropic`, `openai`, `google`, `groq`) |
+| `default_model` | **required** | Default model reference set at bootstrap (for example `anthropic/claude-haiku-4-5`) |
+| `fallback_models` | **required** | Ordered fallback model references (can be `[]`) |
 | `openclaw_version` | `"latest"` | Docker image tag |
 | `openclaw_node_options` | `""` | Optional Node.js flags for OpenClaw container runtime (set memory cap on small servers) |
 | `openclaw_swap_size_mb` | `0` | Swap file size in MB (set > 0 for small RAM nodes) |
 | `openclaw_health_start_period_seconds` | `120` | Docker healthcheck start_period for OpenClaw |
 | `openclaw_health_retries` | `8` | Docker healthcheck retries before marking unhealthy |
+| `seed_starter_workspace_files` | `true` | Seed starter workspace files when missing (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, `USER.md`) |
+| `starter_soul_profile` | `"balanced"` | Starter SOUL profile (`balanced`, `builder`, `researcher`) |
 | `gateway_token` | `""` | Optional fixed gateway token (blank = Terraform auto-generates) |
 | `tailscale_enabled` | `true` | Install and configure Tailscale |
 | `tailscale_auth_key` | `""` | Tailscale auth key |
@@ -301,7 +308,8 @@ cloud-claw/
     │   └── outputs.tf
     └── common/
         └── templates/
-            └── cloud_init.yaml.tpl     # Shared bootstrap (Docker, Tailscale, OpenClaw)
+            ├── cloud_init.yaml.tpl     # Shared bootstrap (Docker, Tailscale, OpenClaw)
+            └── starter/                # Starter workspace file templates
 ```
 
 ---
@@ -344,7 +352,7 @@ The `docker-compose.yml` written by cloud-init includes a commented-out `rclone`
 3. Uncomment the `rclone` service block in `/opt/openclaw/docker-compose.yml`.
 4. Run `systemctl restart openclaw` to apply the change.
 
-The sidecar will sync `/opt/openclaw/workspace` → `gdrive:openclaw-workspace` periodically.
+The sidecar will sync `/opt/openclaw/data/workspace` → `gdrive:openclaw-workspace` periodically.
 
 ---
 

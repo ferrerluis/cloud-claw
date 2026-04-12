@@ -39,6 +39,11 @@ locals {
     gemini_api_key                       = var.gemini_api_key
     telegram_bot_token                   = var.telegram_bot_token
     telegram_allow_from_json             = jsonencode(var.telegram_allow_from)
+    openclaw_config_mode                 = var.openclaw_config_mode
+    agent_channel                        = var.agent_channel
+    model_providers_enabled_json         = jsonencode(var.model_providers_enabled)
+    default_model                        = var.default_model
+    fallback_models_json                 = jsonencode(var.fallback_models)
     tailscale_enabled                    = var.tailscale_enabled
     tailscale_auth_key                   = var.tailscale_auth_key
     openclaw_version                     = var.openclaw_version
@@ -46,6 +51,14 @@ locals {
     openclaw_swap_size_mb                = var.openclaw_swap_size_mb
     openclaw_health_start_period_seconds = var.openclaw_health_start_period_seconds
     openclaw_health_retries              = var.openclaw_health_retries
+    seed_starter_workspace_files         = var.seed_starter_workspace_files
+    starter_soul_profile                 = var.starter_soul_profile
+    starter_soul_balanced_md             = file("${path.module}/../common/templates/starter/SOUL.balanced.md")
+    starter_soul_builder_md              = file("${path.module}/../common/templates/starter/SOUL.builder.md")
+    starter_soul_researcher_md           = file("${path.module}/../common/templates/starter/SOUL.researcher.md")
+    starter_agents_md                    = file("${path.module}/../common/templates/starter/AGENTS.default.md")
+    starter_tools_md                     = file("${path.module}/../common/templates/starter/TOOLS.default.md")
+    starter_user_md                      = file("${path.module}/../common/templates/starter/USER.default.md")
     gateway_token                        = var.gateway_token
   })
 }

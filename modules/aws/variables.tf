@@ -53,11 +53,19 @@ variable "telegram_allow_from" {
   type = list(string)
 }
 
+variable "openclaw_config_mode" { type = string }
+variable "agent_channel" { type = string }
+variable "model_providers_enabled" { type = list(string) }
+variable "default_model" { type = string }
+variable "fallback_models" { type = list(string) }
+
 variable "openclaw_version" { type = string }
 variable "openclaw_node_options" { type = string }
 variable "openclaw_swap_size_mb" { type = number }
 variable "openclaw_health_start_period_seconds" { type = number }
 variable "openclaw_health_retries" { type = number }
+variable "seed_starter_workspace_files" { type = bool }
+variable "starter_soul_profile" { type = string }
 
 variable "gateway_token" {
   type      = string

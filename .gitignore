@@ -46,3 +46,6 @@ id_ed25519
 
 # Local operator notes
 /CODEX.md
+
+# Claude Code working directory
+.claude/

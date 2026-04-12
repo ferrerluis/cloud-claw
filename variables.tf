@@ -222,6 +222,58 @@ variable "telegram_allow_from" {
   default     = []
 }
 
+variable "openclaw_config_mode" {
+  description = "Controls bootstrap edits to openclaw.json. auto=preserve existing config / manage fresh installs, manage=always apply starter bootstrap edits, preserve=skip optional edits."
+  type        = string
+  default     = "auto"
+
+  validation {
+    condition     = contains(["auto", "manage", "preserve"], var.openclaw_config_mode)
+    error_message = "openclaw_config_mode must be one of: auto, manage, preserve."
+  }
+}
+
+variable "agent_channel" {
+  description = "Primary channel plugin to bootstrap. Valid values: \"telegram\" or \"whatsapp\"."
+  type        = string
+  default     = "telegram"
+
+  validation {
+    condition     = contains(["telegram", "whatsapp"], var.agent_channel)
+    error_message = "agent_channel must be \"telegram\" or \"whatsapp\"."
+  }
+}
+
+variable "model_providers_enabled" {
+  description = "Required list of model providers to configure at bootstrap. Allowed values: anthropic, openai, google, groq."
+  type        = list(string)
+
+  validation {
+    condition = (
+      length(var.model_providers_enabled) > 0 &&
+      alltrue([
+        for provider in var.model_providers_enabled : contains(["anthropic", "openai", "google", "groq"], provider)
+      ])
+    )
+    error_message = "model_providers_enabled must include at least one provider and only: anthropic, openai, google, groq."
+  }
+}
+
+variable "default_model" {
+  description = "Required default model reference to set during bootstrap (for example \"anthropic/claude-haiku-4-5\")."
+  type        = string
+
+  validation {
+    condition     = trimspace(var.default_model) != ""
+    error_message = "default_model is required and cannot be empty."
+  }
+}
+
+variable "fallback_models" {
+  description = "Required ordered list of fallback model references to configure at bootstrap (can be an empty list)."
+  type        = list(string)
+}
+
 variable "openclaw_version" {
   description = "OpenClaw Docker image tag (e.g. \"latest\" or a pinned version)."
   type        = string
@@ -250,6 +302,23 @@ variable "openclaw_health_retries" {
   description = "Docker healthcheck retries before marking OpenClaw unhealthy."
   type        = number
   default     = 8
+}
+
+variable "seed_starter_workspace_files" {
+  description = "If true, bootstrap creates starter workspace files (SOUL.md, AGENTS.md, TOOLS.md, USER.md) when missing."
+  type        = bool
+  default     = true
+}
+
+variable "starter_soul_profile" {
+  description = "Starter SOUL.md profile to seed. Valid values: \"balanced\", \"builder\", \"researcher\"."
+  type        = string
+  default     = "balanced"
+
+  validation {
+    condition     = contains(["balanced", "builder", "researcher"], var.starter_soul_profile)
+    error_message = "starter_soul_profile must be one of: balanced, builder, researcher."
+  }
 }
 
 variable "gateway_token" {
