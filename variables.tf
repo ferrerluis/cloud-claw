@@ -175,21 +175,28 @@ variable "repo_ssh_private_key_path" {
 # ─────────────────────────────────────────────────────────
 
 variable "anthropic_api_key" {
-  description = "Anthropic API key for Claude models."
+  description = "Anthropic API key for Claude models. This is the preferred Anthropic credential for cloud-claw."
   type        = string
   default     = ""
   sensitive   = true
 }
 
 variable "anthropic_auth_key" {
-  description = "Anthropic auth key for Claude Code CLI tools (ACP plugin + Claude Proxy). Separate from anthropic_api_key which is used for pay-per-token models. Falls back to anthropic_api_key if blank."
+  description = "Legacy Anthropic setup-token for Claude Code style auth flows. Optional and not recommended for normal cloud-claw setup; prefer anthropic_api_key."
   type        = string
   default     = ""
   sensitive   = true
 }
 
 variable "openai_api_key" {
-  description = "OpenAI API key for GPT models."
+  description = "OpenAI API key for direct OpenAI Platform models such as openai/*."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "openai_codex_auth_json_base64" {
+  description = "Base64-encoded contents of ~/.codex/auth.json for subscription-backed openai-codex/* models. Leave blank unless you want to import an existing Codex CLI login."
   type        = string
   default     = ""
   sensitive   = true

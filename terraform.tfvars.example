@@ -76,8 +76,9 @@ allowed_ssh_cidr = "0.0.0.0/0"
 # Unused keys can be left as empty strings.
 
 anthropic_api_key  = "sk-ant-api03-..."  # Claude (Opus, Sonnet, Haiku) — pay-per-token
-anthropic_auth_key = ""                  # Claude Code setup-token (run `claude setup-token`); enables native anthropic/* models
-openai_api_key     = "sk-..."           # GPT-4o, o3, etc.
+anthropic_auth_key = ""                  # Legacy Anthropic setup-token path; leave blank unless you explicitly need it
+openai_api_key     = "sk-..."            # GPT-4o, o3, etc. via the OpenAI API
+openai_codex_auth_json_base64 = ""       # Base64 of ~/.codex/auth.json for openai-codex/* subscription models
 groq_api_key       = ""                 # e.g. gsk_...  (Llama, Mixtral via Groq)
 gemini_api_key     = ""                 # e.g. AIzaSy...
 

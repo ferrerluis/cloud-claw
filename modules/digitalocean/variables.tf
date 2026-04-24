@@ -33,6 +33,11 @@ variable "openai_api_key" {
   sensitive = true
 }
 
+variable "openai_codex_auth_json_base64" {
+  type      = string
+  sensitive = true
+}
+
 variable "groq_api_key" {
   type      = string
   sensitive = true

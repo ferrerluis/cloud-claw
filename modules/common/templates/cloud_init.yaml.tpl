@@ -28,6 +28,9 @@ write_files:
           volumes:
             - /opt/openclaw/data:/home/node/.openclaw
             - /opt/openclaw/data/workspace:/home/node/.openclaw/workspace
+%{~ if openai_codex_auth_json_base64 != "" ~}
+            - /opt/openclaw/codex:/home/node/.codex
+%{~ endif ~}
           healthcheck:
             test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
             interval: 30s
@@ -413,6 +416,23 @@ write_files:
       echo "[volume] Mounting persistent storage..."
       /root/mount-openclaw-volume.sh
 
+      OPENAI_CODEX_AUTH_JSON_BASE64='${openai_codex_auth_json_base64}'
+
+      sync_openai_codex_auth() {
+        if [ -z "$OPENAI_CODEX_AUTH_JSON_BASE64" ]; then
+          echo "[openai-codex] No Codex CLI auth import configured."
+          return 0
+        fi
+
+        echo "[openai-codex] Importing Codex CLI auth into /opt/openclaw/codex/auth.json..."
+        install -d -m 700 -o 1000 -g 1000 /opt/openclaw/codex
+        printf '%s' "$OPENAI_CODEX_AUTH_JSON_BASE64" | base64 --decode > /opt/openclaw/codex/auth.json
+        chown 1000:1000 /opt/openclaw/codex/auth.json
+        chmod 600 /opt/openclaw/codex/auth.json
+      }
+
+      sync_openai_codex_auth
+
       # 4. Optional swap (recommended for small RAM nodes)
       configure_swap() {
         local swap_mb=${openclaw_swap_size_mb}
@@ -605,14 +625,17 @@ write_files:
         esac
       }
 
-      provider_has_credentials() {
-        local provider="$1"
-        case "$provider" in
+      model_route_has_credentials() {
+        local route="$1"
+        case "$route" in
           anthropic)
-            has_env_key ANTHROPIC_AUTH_KEY
+            has_env_key ANTHROPIC_API_KEY || has_env_key ANTHROPIC_AUTH_KEY
             ;;
           openai)
             has_env_key OPENAI_API_KEY
+            ;;
+          openai-codex)
+            [ -s /opt/openclaw/codex/auth.json ]
             ;;
           google)
             has_env_key GEMINI_API_KEY
@@ -634,14 +657,16 @@ write_files:
       model_is_usable() {
         local model_ref="$1"
         local provider
+        local route
         provider=$(model_provider_from_ref "$model_ref")
+        route="$${model_ref%%/*}"
 
         if ! provider_selected "$provider"; then
           echo "[models] WARNING: Skipping $model_ref because provider '$provider' was not selected."
           return 1
         fi
-        if ! provider_has_credentials "$provider"; then
-          echo "[models] WARNING: Skipping $model_ref because provider '$provider' credentials are missing."
+        if ! model_route_has_credentials "$route"; then
+          echo "[models] WARNING: Skipping $model_ref because route '$route' credentials are missing."
           return 1
         fi
         if ! model_exists "$model_ref"; then
@@ -735,28 +760,31 @@ write_files:
           echo "[plugins] WARNING: OpenClaw did not become ready in time; skipping plugin setup."
         fi
 
-        # Register Anthropic setup-token only when anthropic provider is selected.
+        # Anthropic works from ANTHROPIC_API_KEY at runtime. Keep the old setup-token
+        # path only as an explicit legacy fallback when a token is provided.
         if provider_selected "anthropic"; then
           if has_env_key ANTHROPIC_AUTH_KEY; then
-            echo "[anthropic] Registering Anthropic setup-token..."
+            echo "[anthropic] Registering legacy Anthropic setup-token..."
             if wait_openclaw_healthy; then
               if docker exec openclaw-openclaw-1 openclaw onboard --non-interactive \
                   --auth-choice token \
                   --token-provider anthropic \
                   --token "${anthropic_auth_key}" \
                   --token-expires-in 365d; then
-                echo "[anthropic] Setup-token registered successfully."
+                echo "[anthropic] Legacy setup-token registered successfully."
               else
-                echo "[anthropic] WARNING: onboard --non-interactive command failed."
+                echo "[anthropic] WARNING: Legacy onboard --non-interactive command failed."
               fi
             else
-              echo "[anthropic] WARNING: OpenClaw not healthy; skipped token registration."
+              echo "[anthropic] WARNING: OpenClaw not healthy; skipped legacy token registration."
             fi
+          elif has_env_key ANTHROPIC_API_KEY; then
+            echo "[anthropic] Using ANTHROPIC_API_KEY runtime auth."
           else
-            echo "[anthropic] WARNING: Provider anthropic selected, but ANTHROPIC_AUTH_KEY is missing."
+            echo "[anthropic] WARNING: Provider anthropic selected, but no Anthropic credential is configured."
           fi
         else
-          echo "[anthropic] Provider not selected; skipping setup-token registration."
+          echo "[anthropic] Provider not selected; skipping Anthropic auth bootstrap."
         fi
 
         echo "[models] Configuring user-selected model defaults and fallbacks..."

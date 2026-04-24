@@ -65,6 +65,7 @@ module "aws" {
   anthropic_api_key                    = var.anthropic_api_key
   anthropic_auth_key                   = var.anthropic_auth_key
   openai_api_key                       = var.openai_api_key
+  openai_codex_auth_json_base64        = var.openai_codex_auth_json_base64
   groq_api_key                         = var.groq_api_key
   gemini_api_key                       = var.gemini_api_key
   telegram_bot_token                   = var.telegram_bot_token
@@ -110,6 +111,7 @@ module "digitalocean" {
   anthropic_api_key                    = var.anthropic_api_key
   anthropic_auth_key                   = var.anthropic_auth_key
   openai_api_key                       = var.openai_api_key
+  openai_codex_auth_json_base64        = var.openai_codex_auth_json_base64
   groq_api_key                         = var.groq_api_key
   gemini_api_key                       = var.gemini_api_key
   telegram_bot_token                   = var.telegram_bot_token
