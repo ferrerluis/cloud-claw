@@ -20,7 +20,9 @@ Core rules:
 - Ask which model providers and channel the user wants before asking for provider-specific secrets.
 - If a cloud resource can be resolved from a human-friendly identifier, such as a DigitalOcean volume name, resolve it with a repo-local helper instead of bouncing the lookup back to them.
 - Treat `anthropic_auth_key` as a legacy fallback, not the normal Anthropic path. Prefer `anthropic_api_key`.
-- If the user wants `openai-codex/*` models, do not ask for a raw refresh token. Prefer importing a local Codex CLI login from `~/.codex/auth.json` after the user runs `codex login` with the ChatGPT sign-in path.
+- If the user wants `openai-codex/*` models, do not ask for a raw refresh token. Ask whether they want to use a local Codex CLI login before inspecting or importing `~/.codex/auth.json`.
+- Before running `skills/claw-setup/scripts/import_codex_auth.py --inspect` or `skills/claw-setup/scripts/import_codex_auth.py`, explain that this reads local Codex auth and writes a base64 auth payload into `terraform.tfvars`, which may later appear in Terraform-managed state or cloud-init data.
+- Never auto-detect, inspect, import, print, or summarize local Codex auth without explicit user consent in that setup conversation.
 
 ## Workflow
 
@@ -35,6 +37,7 @@ Core rules:
    - Accept Terraform defaults silently unless the user asks to override them or the field is required and has no default.
    - Do not ask advanced runtime questions unless the user opts into advanced overrides.
    - When the user wants to reuse a DigitalOcean volume by name, resolve it with `python3 skills/claw-setup/scripts/resolve_do_volume.py --name <volume-name>` once a token is available.
+   - When the user wants `openai-codex/*`, offer a choice before touching local auth: review/import the local Codex login, paste an already-exported base64 payload, or switch/defer auth.
 
 3. Write `terraform.tfvars` canonically.
    - Save answers to a temporary JSON file.

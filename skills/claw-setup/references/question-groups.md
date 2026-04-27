@@ -158,7 +158,7 @@ Ask only for secrets that match the chosen channel and model providers.
 Examples:
 
 - Ask `openai_api_key` only if any configured model uses `openai/*`.
-- If any configured model uses `openai-codex/*`, prefer importing a local Codex CLI login into `openai_codex_auth_json_base64`.
+- If any configured model uses `openai-codex/*`, ask for explicit consent before inspecting or importing a local Codex CLI login into `openai_codex_auth_json_base64`.
 - Ask `groq_api_key` only if the user selected Groq.
 - Ask `gemini_api_key` only if the user selected Google Gemini.
 - Ask `anthropic_api_key` only if the user selected Anthropic.
@@ -166,16 +166,17 @@ Examples:
 Special rules:
 
 - Do not ask `anthropic_auth_key` in the normal flow. See `auth-and-schema-gaps.md`.
-- If the user wants subscription-backed OpenAI access for `openai-codex/*`, ask them to run `codex login` if needed, choose the ChatGPT sign-in path, then verify importability with `python3 skills/claw-setup/scripts/import_codex_auth.py --inspect` before storing the base64 output from `python3 skills/claw-setup/scripts/import_codex_auth.py`.
+- If the user wants subscription-backed OpenAI access for `openai-codex/*`, first explain that local import reads `~/.codex/auth.json` and stores a base64 auth payload in `terraform.tfvars`, which may later be copied into Terraform state or cloud-init data.
+- Only after the user chooses local import, ask them to run `codex login` if needed, choose the ChatGPT sign-in path, then verify importability with `python3 skills/claw-setup/scripts/import_codex_auth.py --inspect` before storing the base64 output from `python3 skills/claw-setup/scripts/import_codex_auth.py`.
+- If the user does not want local import, offer to accept an already-exported `openai_codex_auth_json_base64`, switch to `openai/*` API-key models, or defer until they are ready.
 - Do not ask the user to manually paste a raw OpenAI refresh token unless import is impossible.
 - Ask `gateway_token` only if the user explicitly wants to override the auto-generated token.
 
 Suggested choices:
 
-- `enter the required keys now`
-- `import my local Codex login`
-- `leave optional providers blank`
-- `other auth path`
+- `enter API keys or paste auth payload`
+- `review and import my local Codex login`
+- `switch, defer, or other auth path`
 
 ## Prompt 7: Tailscale
 

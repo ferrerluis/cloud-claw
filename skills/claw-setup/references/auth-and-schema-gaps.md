@@ -36,10 +36,14 @@ Recommended setup behavior:
 - If the user picks `openai-codex/*` models, do not ask for a raw refresh token by default.
 - For this repo's import path, support only the ChatGPT-backed Codex login shape that includes `tokens.refresh_token`.
 - Instead:
-  1. Ask the user to run `codex login` if they have not authenticated Codex locally yet.
-  2. Tell them to choose the ChatGPT sign-in path, not API-key login, for `openai-codex/*`.
-  3. Verify the login is importable with `python3 skills/claw-setup/scripts/import_codex_auth.py --inspect`.
-  4. Store the base64 output from `python3 skills/claw-setup/scripts/import_codex_auth.py` in `openai_codex_auth_json_base64`.
+  1. Ask whether the user wants to use their local Codex CLI login for this cloud deployment.
+  2. Before inspecting anything, explain that import reads `~/.codex/auth.json` and stores a base64 auth payload in `terraform.tfvars`.
+  3. Explain that this value may later appear in Terraform-managed state or cloud-init data.
+  4. If the user agrees, ask them to run `codex login` if they have not authenticated Codex locally yet.
+  5. Tell them to choose the ChatGPT sign-in path, not API-key login, for `openai-codex/*`.
+  6. Verify the login is importable with `python3 skills/claw-setup/scripts/import_codex_auth.py --inspect`.
+  7. Store the base64 output from `python3 skills/claw-setup/scripts/import_codex_auth.py` in `openai_codex_auth_json_base64`.
+  8. If the user does not agree, offer three safe alternatives: paste an already-exported `openai_codex_auth_json_base64`, switch to `openai/*` API-key models, or defer model auth until later.
 
 Why this is the preferred path:
 
@@ -47,6 +51,7 @@ Why this is the preferred path:
 - The official Codex flow is local login, with credentials stored locally.
 - This repo can import that local credential state directly, which is safer and less error-prone than asking the user to paste opaque OAuth tokens.
 - Although Codex can also authenticate with an API key, this specific importer does not support API-key-only auth files for `openai-codex/*`. If the user only wants API-key auth, steer them to `openai/*` models instead.
+- `import_codex_auth.py --inspect` still reads local auth metadata, so it requires the same explicit consent as the full import.
 
 Implementation note:
 
