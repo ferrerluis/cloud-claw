@@ -1,0 +1,1 @@
+{"deployment":"agent-stack","paths":["/opt/agent-stack"],"containers":{"openclaw":"healthy","hermes":"healthy","n8n":"healthy","postgres":"healthy"}}

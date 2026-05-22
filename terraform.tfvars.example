@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# OpenClaw Terraform — variable example file
+# AgentStack Terraform — variable example file
 # Copy to terraform.tfvars and fill in your values.
 # NEVER commit terraform.tfvars (it is in .gitignore).
 # ═══════════════════════════════════════════════════════════════
@@ -7,9 +7,10 @@
 # ── Provider selection ──────────────────────────────────────────
 # "aws" → deploys an EC2 instance
 # "digitalocean" → deploys a Droplet
+# "hetzner" → deploys a Hetzner Cloud server
 cloud_provider = "aws"
 
-project_name = "openclaw"
+project_name = "agent-stack"
 
 # Standard SSH/admin username created on the VM across providers.
 admin_username = "admin"
@@ -52,27 +53,41 @@ do_disk_size_gb = 20
 do_existing_volume_id   = ""
 do_existing_volume_name = ""
 
+# ── Hetzner Cloud ────────────────────────────────────────────────
+# Leave blank if deploying to AWS or DigitalOcean.
+
+hcloud_token       = "YOUR_HETZNER_CLOUD_API_TOKEN"
+hcloud_location    = "ash"
+hcloud_server_type = "cx32" # sized for the full AgentStack profile
+hcloud_image       = "ubuntu-22.04"
+
+# Extra block storage volume in GB (default 50 GB)
+hcloud_disk_size_gb = 50
+
+# Leave blank to create a new volume.
+hcloud_existing_volume_id = ""
+
 # ── SSH ──────────────────────────────────────────────────────────
 # Optional explicit SSH public key.
-# If empty, Terraform auto-resolves/creates ./.ssh/id_ed25519_cloud_claw(.pub)
+# If empty, Terraform auto-resolves/creates ./.ssh/id_ed25519_agent_stack(.pub)
 # at plan/apply time and uses that public key.
 ssh_public_key = ""
 
 # Repo-relative key path used for auto key resolution/generation (when
 # ssh_public_key is empty).
-repo_ssh_private_key_path = ".ssh/id_ed25519_cloud_claw"
+repo_ssh_private_key_path = ".ssh/id_ed25519_agent_stack"
 
 # Write ./.ssh/config with resolved host/user/key on apply
 generate_repo_ssh_config = true
-repo_ssh_host_alias      = "cloud-claw"
-repo_ssh_identity_file   = "./.ssh/id_ed25519_cloud_claw"
+repo_ssh_host_alias      = "agent-stack"
+repo_ssh_identity_file   = "./.ssh/id_ed25519_agent_stack"
 
 # Restrict SSH to your own IP for best security: "203.0.113.5/32"
 # Leave as 0.0.0.0/0 only if you rely solely on Tailscale for access control.
 allowed_ssh_cidr = "0.0.0.0/0"
 
 # ── LLM API keys ─────────────────────────────────────────────────
-# Supply only the keys for the providers you intend to use in OpenClaw.
+# Supply only the keys for the providers you intend to use in AgentStack.
 # Unused keys can be left as empty strings.
 
 anthropic_api_key  = "sk-ant-api03-..."  # Claude (Opus, Sonnet, Haiku) — pay-per-token
@@ -126,6 +141,56 @@ starter_soul_profile         = "balanced" # balanced | builder | researcher
 # Optional: set a fixed gateway token. Leave blank to auto-generate one that
 # Terraform stores in state and prints in outputs.
 gateway_token = ""
+
+# ── Agent + automation stack ─────────────────────────────────────
+# Default: run the complete local stack.
+enabled_services = [
+  "openclaw",
+  "hermes",
+  "n8n",
+]
+
+# Hermes Agent runtime.
+hermes_image              = "nousresearch/hermes-agent:latest"
+hermes_dashboard_enabled  = true
+hermes_api_server_enabled = true
+hermes_api_server_key     = "" # blank = Terraform auto-generates
+
+# n8n runtime.
+n8n_image                   = "docker.n8n.io/n8nio/n8n:stable"
+n8n_database_mode           = "local_postgres" # local_postgres | external_postgres
+n8n_encryption_key          = ""               # blank = Terraform auto-generates
+n8n_public_webhooks_enabled = true
+n8n_generic_timezone        = "America/New_York"
+
+# Local Postgres for n8n. Data is stored on the persistent volume.
+postgres_image    = "postgres:17-alpine"
+postgres_database = "n8n"
+postgres_user     = "n8n"
+postgres_password = "" # blank = Terraform auto-generates
+
+# External Postgres, used only when n8n_database_mode = "external_postgres".
+external_postgres_host        = ""
+external_postgres_port        = 5432
+external_postgres_database    = "n8n"
+external_postgres_user        = "n8n"
+external_postgres_password    = ""
+external_postgres_ssl_enabled = true
+
+# ── Optional public domains + login gate ─────────────────────────
+# When disabled, UI ports stay bound to localhost and are reached through
+# Tailscale or SSH tunnels.
+public_domain_enabled = false
+base_domain           = "" # derives openclaw.<base>, hermes.<base>, n8n.<base>
+openclaw_domain       = ""
+hermes_domain         = ""
+n8n_domain            = ""
+acme_email            = ""
+
+# v1 public-domain auth uses Caddy basic auth.
+ui_auth_mode     = "basic"
+ui_auth_username = "admin"
+ui_auth_password = "" # blank = Terraform auto-generates
 
 # ── Tailscale ────────────────────────────────────────────────────
 # Strongly recommended: keeps the dashboard off the public internet.

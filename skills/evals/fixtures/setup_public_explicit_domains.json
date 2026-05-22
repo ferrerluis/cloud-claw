@@ -1,0 +1,1 @@
+{"provider":"hetzner","services":["openclaw","hermes","n8n"],"public_domain":true,"domains":{"openclaw":"claw.example.com","hermes":"hermes.example.com","n8n":"n8n.example.com"}}

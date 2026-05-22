@@ -10,7 +10,6 @@ tfplan
 
 # Terraform working directory
 .terraform/
-.terraform.lock.hcl
 
 # Variable files may contain secrets — use terraform.tfvars.example as the template
 *.tfvars
@@ -44,8 +43,13 @@ id_ed25519
 *.swp
 *.swo
 
+# Python test caches
+__pycache__/
+*.py[cod]
+
 # Local operator notes
 /CODEX.md
+/.agent-stack-local/
 
 # Claude Code working directory
 .claude/

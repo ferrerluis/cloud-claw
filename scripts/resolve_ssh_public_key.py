@@ -53,7 +53,7 @@ def resolve_public_key(repo_root: Path, private_relpath: str) -> tuple[str, str,
     private_path.parent.mkdir(parents=True, exist_ok=True)
     chmod_if_exists(private_path.parent, 0o700)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    comment = f"cloud-claw@{socket.gethostname()}-{ts}"
+    comment = f"agent-stack@{socket.gethostname()}-{ts}"
 
     subprocess.run(
         ["ssh-keygen", "-t", "ed25519", "-N", "", "-C", comment, "-f", str(private_path)],
@@ -72,7 +72,7 @@ def main() -> None:
 
     query = parse_query()
     repo_root = Path(str(query.get("repo_root") or os.getcwd())).resolve()
-    private_relpath = str(query.get("private_key_relpath") or ".ssh/id_ed25519_cloud_claw")
+    private_relpath = str(query.get("private_key_relpath") or ".ssh/id_ed25519_agent_stack")
 
     public_key, source, public_path = resolve_public_key(repo_root, private_relpath)
     rel_public = os.path.relpath(public_path, repo_root)

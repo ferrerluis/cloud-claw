@@ -1,0 +1,1 @@
+{"provider":"aws","services":["openclaw","hermes","n8n"],"database":"external_postgres","external_postgres_host":"db.internal.example"}

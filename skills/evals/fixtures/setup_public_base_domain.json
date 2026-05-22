@@ -1,0 +1,1 @@
+{"provider":"digitalocean","services":["openclaw","hermes","n8n"],"public_domain":true,"base_domain":"example.com"}

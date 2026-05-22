@@ -1,0 +1,11 @@
+/opt/agent-stack/docker-compose.yml
+/opt/agent-stack/.env
+/opt/agent-stack/Caddyfile.template
+/opt/agent-stack/data/openclaw:/home/node/.openclaw
+/opt/agent-stack/data/hermes:/opt/data
+/opt/agent-stack/data/n8n:/home/node/.n8n
+/opt/agent-stack/data/postgres:/var/lib/postgresql/data
+/opt/agent-stack/data/caddy/data:/data
+/etc/systemd/system/agent-stack.service
+/etc/systemd/system/openclaw.service
+/usr/local/bin/agent-stack-migrate-layout
