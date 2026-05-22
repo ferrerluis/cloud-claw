@@ -49,6 +49,7 @@ __pycache__/
 
 # Local operator notes
 /CODEX.md
+/.agent-stack-local/
 
 # Claude Code working directory
 .claude/
