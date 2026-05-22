@@ -2,76 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-KEY_PATH="${OPENCLAW_SSH_KEY_PATH:-$ROOT_DIR/.ssh/id_ed25519_cloud_claw}"
-
-usage() {
-  cat <<'EOF'
-Usage: bin/cloud-claw-ssh [--key <path>] [--host <user@ip>] [--] [remote-command...]
-
-Defaults:
-- host is read from: terraform output -raw ssh_command
-- key is read from:  ./.ssh/id_ed25519_cloud_claw
-EOF
-}
-
-HOST_OVERRIDE=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --key)
-      KEY_PATH="${2:-}"
-      if [[ -z "$KEY_PATH" ]]; then
-        echo "error: --key requires a value" >&2
-        exit 1
-      fi
-      shift 2
-      ;;
-    --host)
-      HOST_OVERRIDE="${2:-}"
-      if [[ -z "$HOST_OVERRIDE" ]]; then
-        echo "error: --host requires a value" >&2
-        exit 1
-      fi
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    --)
-      shift
-      break
-      ;;
-    *)
-      break
-      ;;
-  esac
-done
-
-if [[ ! -f "$KEY_PATH" ]]; then
-  echo "error: SSH private key not found at $KEY_PATH" >&2
-  echo "run: bin/cloud-claw-ssh-create" >&2
-  exit 1
+if [[ -z "${AGENT_STACK_SSH_KEY_PATH:-}" && -z "${OPENCLAW_SSH_KEY_PATH:-}" && -f "$ROOT_DIR/.ssh/id_ed25519_cloud_claw" ]]; then
+  export AGENT_STACK_SSH_KEY_PATH="$ROOT_DIR/.ssh/id_ed25519_cloud_claw"
 fi
-
-TARGET=""
-if [[ -n "$HOST_OVERRIDE" ]]; then
-  TARGET="$HOST_OVERRIDE"
-else
-  SSH_CMD="$(terraform -chdir="$ROOT_DIR" output -raw ssh_command 2>/dev/null || true)"
-  if [[ -z "$SSH_CMD" ]]; then
-    echo "error: could not read terraform output 'ssh_command'" >&2
-    echo "run: terraform apply (or pass --host user@ip)" >&2
-    exit 1
-  fi
-  TARGET="${SSH_CMD#ssh }"
-fi
-
-exec ssh \
-  -i "$KEY_PATH" \
-  -o IdentitiesOnly=yes \
-  -o ConnectTimeout=10 \
-  -o ServerAliveInterval=20 \
-  -o ServerAliveCountMax=3 \
-  -o TCPKeepAlive=yes \
-  "$TARGET" \
-  "$@"
+exec "$ROOT_DIR/bin/agent-stack-ssh" "$@"

@@ -1,15 +1,11 @@
 variable "project_name" { type = string }
 variable "admin_username" { type = string }
-variable "do_region" { type = string }
-variable "do_droplet_size" { type = string }
-variable "do_disk_size_gb" { type = number }
+variable "hcloud_location" { type = string }
+variable "hcloud_server_type" { type = string }
+variable "hcloud_image" { type = string }
+variable "hcloud_disk_size_gb" { type = number }
 
-variable "do_existing_volume_id" {
-  type    = string
-  default = ""
-}
-
-variable "do_existing_volume_name" {
+variable "hcloud_existing_volume_id" {
   type    = string
   default = ""
 }

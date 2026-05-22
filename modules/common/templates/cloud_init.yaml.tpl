@@ -1,5 +1,5 @@
 #cloud-config
-# OpenClaw bootstrap  rendered by Terraform's templatefile()
+# AgentStack bootstrap rendered by Terraform's templatefile()
 # Provider: ${provider_type}
 
 packages:
@@ -12,12 +12,13 @@ packages:
   - jq
 
 write_files:
-  #  OpenClaw Docker Compose 
-  - path: /opt/openclaw/docker-compose.yml
+  #  AgentStack Docker Compose
+  - path: /opt/agent-stack/docker-compose.yml
     permissions: "0644"
     owner: root:root
     content: |
       services:
+%{ if openclaw_enabled }
         openclaw:
           image: ghcr.io/openclaw/openclaw:${openclaw_version}
           restart: unless-stopped
@@ -26,10 +27,9 @@ write_files:
             - "127.0.0.1:18789:18789"
             - "127.0.0.1:18793:18793"
           volumes:
-            - /opt/openclaw/data:/home/node/.openclaw
-            - /opt/openclaw/data/workspace:/home/node/.openclaw/workspace
+            - /opt/agent-stack/data/openclaw:/home/node/.openclaw
 %{~ if openai_codex_auth_json_base64 != "" ~}
-            - /opt/openclaw/codex:/home/node/.codex
+            - /opt/agent-stack/codex:/home/node/.codex
 %{~ endif ~}
           healthcheck:
             test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
@@ -37,14 +37,83 @@ write_files:
             timeout: 10s
             retries: ${openclaw_health_retries}
             start_period: ${openclaw_health_start_period_seconds}s
-%{~ if tailscale_enabled ~}
+%{ endif }
+%{ if hermes_enabled }
+
+        hermes:
+          image: ${hermes_image}
+          restart: unless-stopped
+          command: gateway run
+          env_file: .env
+          ports:
+            - "127.0.0.1:8642:8642"
+            - "127.0.0.1:9119:9119"
+          volumes:
+            - /opt/agent-stack/data/hermes:/opt/data
+          environment:
+            HERMES_DASHBOARD: "${hermes_dashboard_enabled ? "1" : "0"}"
+            HERMES_DASHBOARD_HOST: "0.0.0.0"
+            HERMES_DASHBOARD_PORT: "9119"
+            API_SERVER_ENABLED: "${hermes_api_server_enabled ? "true" : "false"}"
+            API_SERVER_HOST: "0.0.0.0"
+            API_SERVER_KEY: "${hermes_api_server_key}"
+            API_SERVER_CORS_ORIGINS: "*"
+%{ endif }
+%{ if local_postgres_enabled }
+
+        postgres:
+          image: ${postgres_image}
+          restart: unless-stopped
+          env_file: .env
+          environment:
+            POSTGRES_DB: "${postgres_database}"
+            POSTGRES_USER: "${postgres_user}"
+            POSTGRES_PASSWORD: "${postgres_password}"
+            PGDATA: /var/lib/postgresql/data/pgdata
+          volumes:
+            - /opt/agent-stack/data/postgres:/var/lib/postgresql/data
+          healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${postgres_user} -d ${postgres_database}"]
+            interval: 30s
+            timeout: 10s
+            retries: 8
+%{ endif }
+%{ if n8n_enabled }
+
+        n8n:
+          image: ${n8n_image}
+          restart: unless-stopped
+          env_file: .env
+          ports:
+            - "127.0.0.1:5678:5678"
+          volumes:
+            - /opt/agent-stack/data/n8n:/home/node/.n8n
+%{ if local_postgres_enabled }
+          depends_on:
+            postgres:
+              condition: service_healthy
+%{ endif }
+%{ endif }
+%{ if caddy_enabled }
+
+        caddy:
+          image: caddy:2-alpine
+          restart: unless-stopped
+          env_file: .env
+          ports:
+            - "80:80"
+            - "443:443"
+          volumes:
+            - /opt/agent-stack/Caddyfile:/etc/caddy/Caddyfile:ro
+            - /opt/agent-stack/data/caddy/data:/data
+            - /opt/agent-stack/data/caddy/config:/config
+%{ endif }
+%{ if tailscale_enabled }
 
         tailscale:
           image: tailscale/tailscale:stable
           restart: unless-stopped
-          network_mode: "service:openclaw"
-          depends_on:
-            - openclaw
+          network_mode: "host"
           env_file: .env
           cap_add:
             - NET_ADMIN
@@ -52,10 +121,10 @@ write_files:
           devices:
             - /dev/net/tun:/dev/net/tun
           volumes:
-            - /opt/openclaw/tailscale-state:/var/lib/tailscale
-            - /opt/openclaw/tailscale-bootstrap.sh:/bootstrap.sh:ro
+            - /opt/agent-stack/tailscale-state:/var/lib/tailscale
+            - /opt/agent-stack/tailscale-bootstrap.sh:/bootstrap.sh:ro
           command: ["/bin/sh", "/bootstrap.sh"]
-%{~ endif ~}
+%{ endif }
 
       #  Optional: Google Drive sync via rclone
       # Uncomment and configure rclone (https://rclone.org/drive/) to sync
@@ -65,7 +134,7 @@ write_files:
       #    restart: unless-stopped
       #    depends_on: [openclaw]
       #    volumes:
-      #      - /opt/openclaw/data/workspace:/data
+      #      - /opt/agent-stack/data/openclaw/workspace:/data
       #      - /root/.config/rclone:/config/rclone:ro
       #    command:
       #      - sync
@@ -75,7 +144,7 @@ write_files:
       #      - --log-level=INFO
 
   #  LLM API keys 
-  - path: /opt/openclaw/.env
+  - path: /opt/agent-stack/.env
     permissions: "0600"
     owner: root:root
     content: |
@@ -86,6 +155,11 @@ write_files:
       GEMINI_API_KEY=${gemini_api_key}
       TELEGRAM_BOT_TOKEN=${telegram_bot_token}
       OPENCLAW_GATEWAY_TOKEN=${gateway_token}
+      OPENCLAW_ENABLED=${openclaw_enabled}
+      HERMES_ENABLED=${hermes_enabled}
+      N8N_ENABLED=${n8n_enabled}
+      LOCAL_POSTGRES_ENABLED=${local_postgres_enabled}
+      CADDY_ENABLED=${caddy_enabled}
       NODE_OPTIONS=${openclaw_node_options}
 %{ if tailscale_enabled }
       OPENCLAW_GATEWAY_BIND=loopback
@@ -96,39 +170,116 @@ write_files:
       TAILSCALE_AUTH_KEY=${tailscale_auth_key}
       TAILSCALE_HOSTNAME=${project_name}
 %{ endif }
+      HERMES_DASHBOARD=${hermes_dashboard_enabled ? "1" : "0"}
+      HERMES_DASHBOARD_HOST=0.0.0.0
+      HERMES_DASHBOARD_PORT=9119
+      API_SERVER_ENABLED=${hermes_api_server_enabled}
+      API_SERVER_HOST=0.0.0.0
+      API_SERVER_KEY=${hermes_api_server_key}
+      API_SERVER_CORS_ORIGINS=*
+      N8N_ENCRYPTION_KEY=${n8n_encryption_key}
+      GENERIC_TIMEZONE=${n8n_generic_timezone}
+      DB_TYPE=postgresdb
+      DB_POSTGRESDB_HOST=${n8n_postgres_host}
+      DB_POSTGRESDB_PORT=${n8n_postgres_port}
+      DB_POSTGRESDB_DATABASE=${n8n_postgres_database}
+      DB_POSTGRESDB_USER=${n8n_postgres_user}
+      DB_POSTGRESDB_PASSWORD=${n8n_postgres_password}
+      DB_POSTGRESDB_SSL_ENABLED=${n8n_postgres_ssl_enabled}
+      POSTGRES_DB=${postgres_database}
+      POSTGRES_USER=${postgres_user}
+      POSTGRES_PASSWORD=${postgres_password}
+%{ if caddy_enabled && n8n_domain != "" }
+      N8N_HOST=${n8n_domain}
+      N8N_PORT=5678
+      N8N_PROTOCOL=https
+      WEBHOOK_URL=https://${n8n_domain}/
+      N8N_EDITOR_BASE_URL=https://${n8n_domain}/
+      N8N_PROXY_HOPS=1
+%{ endif }
+      UI_AUTH_USERNAME=${ui_auth_username}
+      UI_AUTH_PASSWORD=${ui_auth_password}
+
+%{ if caddy_enabled }
+  - path: /opt/agent-stack/Caddyfile.template
+    permissions: "0600"
+    owner: root:root
+    content: |
+%{ if acme_email != "" }
+      {
+        email ${acme_email}
+      }
+
+%{ endif }
+      (agentstack_ui_auth) {
+        basic_auth {
+          ${ui_auth_username} __UI_AUTH_HASH__
+        }
+      }
+%{ if openclaw_enabled && openclaw_domain != "" }
+
+      ${openclaw_domain} {
+        import agentstack_ui_auth
+        reverse_proxy openclaw:18789
+      }
+%{ endif }
+%{ if hermes_enabled && hermes_domain != "" }
+
+      ${hermes_domain} {
+        import agentstack_ui_auth
+        reverse_proxy hermes:9119
+      }
+%{ endif }
+%{ if n8n_enabled && n8n_domain != "" }
+
+      ${n8n_domain} {
+%{ if n8n_public_webhooks_enabled }
+        @n8n_webhooks path /webhook* /webhook-test*
+        handle @n8n_webhooks {
+          reverse_proxy n8n:5678
+        }
+
+%{ endif }
+        handle {
+          import agentstack_ui_auth
+          reverse_proxy n8n:5678
+        }
+      }
+%{ endif }
+%{ endif }
 
   #  Starter workspace templates (seeded create-if-missing by install script)
-  - path: /opt/openclaw/templates/SOUL.balanced.md
+  - path: /opt/agent-stack/templates/SOUL.balanced.md
     permissions: "0644"
     owner: root:root
     content: |
       ${replace(starter_soul_balanced_md, "\n", "\n      ")}
 
-  - path: /opt/openclaw/templates/SOUL.builder.md
+  - path: /opt/agent-stack/templates/SOUL.builder.md
     permissions: "0644"
     owner: root:root
     content: |
       ${replace(starter_soul_builder_md, "\n", "\n      ")}
 
-  - path: /opt/openclaw/templates/SOUL.researcher.md
+  - path: /opt/agent-stack/templates/SOUL.researcher.md
     permissions: "0644"
     owner: root:root
     content: |
       ${replace(starter_soul_researcher_md, "\n", "\n      ")}
 
-  - path: /opt/openclaw/templates/AGENTS.default.md
+  - path: /opt/agent-stack/templates/AGENTS.default.md
     permissions: "0644"
     owner: root:root
     content: |
       ${replace(starter_agents_md, "\n", "\n      ")}
 
-  - path: /opt/openclaw/templates/TOOLS.default.md
+  - path: /opt/agent-stack/templates/TOOLS.default.md
     permissions: "0644"
     owner: root:root
     content: |
       ${replace(starter_tools_md, "\n", "\n      ")}
 
-  - path: /opt/openclaw/templates/USER.default.md
+  - path: /opt/agent-stack/templates/USER.default.md
     permissions: "0644"
     owner: root:root
     content: |
@@ -136,7 +287,7 @@ write_files:
 
 
 %{ if tailscale_enabled }
-  - path: /opt/openclaw/tailscale-bootstrap.sh
+  - path: /opt/agent-stack/tailscale-bootstrap.sh
     permissions: "0700"
     owner: root:root
     content: |
@@ -202,26 +353,166 @@ write_files:
       fi
 
       tailscale --socket="$SOCK" serve reset || true
-      tailscale --socket="$SOCK" serve --bg 127.0.0.1:18789
-      tailscale --socket="$SOCK" serve status || true
+      if [ "$${OPENCLAW_ENABLED:-false}" = "true" ]; then
+        tailscale --socket="$SOCK" serve --bg 127.0.0.1:18789
+        tailscale --socket="$SOCK" serve status || true
+      else
+        echo "OpenClaw is disabled; Tailscale Serve route was not configured."
+      fi
 
       wait "$TS_PID"
 %{ endif }
 
-  #  Systemd service 
-  - path: /etc/systemd/system/openclaw.service
+  #  Layout migrator
+  - path: /usr/local/bin/agent-stack-migrate-layout
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      APP_ROOT="$${AGENT_STACK_APP_ROOT:-/opt/agent-stack}"
+      DATA_ROOT="$${AGENT_STACK_DATA_ROOT:-$APP_ROOT/data}"
+      LEGACY_ROOT="$${AGENT_STACK_LEGACY_ROOT:-/opt/openclaw}"
+      LEGACY_SERVICES="$DATA_ROOT/services"
+      MARKER="$DATA_ROOT/.agent-stack-layout-version"
+
+      log() {
+        echo "[layout] $*"
+      }
+
+      ensure_dirs() {
+        install -d -m 0755 "$APP_ROOT" "$DATA_ROOT"
+        install -d -m 0755 \
+          "$DATA_ROOT/openclaw" \
+          "$DATA_ROOT/hermes" \
+          "$DATA_ROOT/n8n" \
+          "$DATA_ROOT/postgres" \
+          "$DATA_ROOT/caddy/data" \
+          "$DATA_ROOT/caddy/config" \
+          "$APP_ROOT/tailscale-state"
+      }
+
+      move_children() {
+        local src="$1"
+        local dest="$2"
+        [ -d "$src" ] || return 0
+        install -d -m 0755 "$dest"
+        shopt -s dotglob nullglob
+        local child
+        for child in "$src"/*; do
+          local base
+          base="$(basename "$child")"
+          if [ -e "$dest/$base" ]; then
+            log "Keeping existing $dest/$base; leaving legacy $child in place."
+            continue
+          fi
+          mv "$child" "$dest/"
+        done
+        shopt -u dotglob nullglob
+        rmdir "$src" 2>/dev/null || true
+      }
+
+      migrate_legacy_volume_layout() {
+        [ -d "$DATA_ROOT" ] || return 0
+        if [ -f "$MARKER" ]; then
+          log "AgentStack data layout already present."
+          return 0
+        fi
+
+        if [ ! -f "$DATA_ROOT/openclaw.json" ] && [ ! -d "$DATA_ROOT/workspace" ] && [ ! -d "$DATA_ROOT/services" ]; then
+          log "Fresh AgentStack data volume detected."
+          return 0
+        fi
+
+        log "Migrating legacy /opt/openclaw/data payload into peer service layout."
+        install -d -m 0755 "$DATA_ROOT/openclaw"
+
+        if [ -d "$LEGACY_SERVICES/hermes" ]; then
+          move_children "$LEGACY_SERVICES/hermes" "$DATA_ROOT/hermes"
+        fi
+        if [ -d "$LEGACY_SERVICES/n8n" ]; then
+          move_children "$LEGACY_SERVICES/n8n" "$DATA_ROOT/n8n"
+        fi
+        if [ -d "$LEGACY_SERVICES/postgres" ]; then
+          move_children "$LEGACY_SERVICES/postgres" "$DATA_ROOT/postgres"
+        fi
+        if [ -d "$LEGACY_SERVICES/caddy" ]; then
+          move_children "$LEGACY_SERVICES/caddy" "$DATA_ROOT/caddy"
+        fi
+        rmdir "$LEGACY_SERVICES" 2>/dev/null || true
+
+        shopt -s dotglob nullglob
+        local child
+        for child in "$DATA_ROOT"/*; do
+          local base
+          base="$(basename "$child")"
+          case "$base" in
+            openclaw|hermes|n8n|postgres|caddy|lost+found)
+              continue
+              ;;
+          esac
+          if [ -e "$DATA_ROOT/openclaw/$base" ]; then
+            log "Keeping existing $DATA_ROOT/openclaw/$base; leaving $child in place."
+            continue
+          fi
+          mv "$child" "$DATA_ROOT/openclaw/"
+        done
+        shopt -u dotglob nullglob
+      }
+
+      ensure_legacy_symlinks() {
+        if [ ! -e "$DATA_ROOT/openclaw.json" ]; then
+          ln -s openclaw/openclaw.json "$DATA_ROOT/openclaw.json" 2>/dev/null || true
+        fi
+        if [ ! -e "$DATA_ROOT/workspace" ]; then
+          ln -s openclaw/workspace "$DATA_ROOT/workspace" 2>/dev/null || true
+        fi
+
+        if [ -L "$LEGACY_ROOT" ]; then
+          return 0
+        fi
+        if [ ! -e "$LEGACY_ROOT" ]; then
+          ln -s "$APP_ROOT" "$LEGACY_ROOT"
+          return 0
+        fi
+        if [ -d "$LEGACY_ROOT" ] && [ -z "$(find "$LEGACY_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+          rmdir "$LEGACY_ROOT"
+          ln -s "$APP_ROOT" "$LEGACY_ROOT"
+          return 0
+        fi
+        log "Leaving existing $LEGACY_ROOT in place; it is not safe to replace with a symlink."
+      }
+
+      fix_service_ownership() {
+        chown -R 1000:1000 "$DATA_ROOT/openclaw" || true
+        chown -R 10000:10000 "$DATA_ROOT/hermes" || true
+        chown -R 1000:1000 "$DATA_ROOT/n8n" || true
+      }
+
+      ensure_dirs
+      migrate_legacy_volume_layout
+      ensure_dirs
+      ensure_legacy_symlinks
+      fix_service_ownership
+      printf '1\n' > "$MARKER"
+      log "Layout ready at $DATA_ROOT."
+
+  #  Systemd service
+  - path: /etc/systemd/system/agent-stack.service
     permissions: "0644"
     owner: root:root
     content: |
       [Unit]
-      Description=OpenClaw AI Assistant
+      Description=AgentStack
       Documentation=https://github.com/openclaw/openclaw
       Requires=docker.service
       After=docker.service network-online.target
 
       [Service]
       Type=simple
-      WorkingDirectory=/opt/openclaw
+      WorkingDirectory=/opt/agent-stack
+      ExecStartPre=/usr/local/bin/agent-stack-migrate-layout
       ExecStartPre=/usr/bin/docker compose pull --quiet
       ExecStart=/usr/bin/docker compose up --remove-orphans
       ExecStop=/usr/bin/docker compose down
@@ -232,57 +523,75 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
+  - path: /etc/systemd/system/openclaw.service
+    permissions: "0644"
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Compatibility wrapper for AgentStack
+      Requires=agent-stack.service
+      After=agent-stack.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/systemctl start agent-stack.service
+      ExecStop=/bin/systemctl stop agent-stack.service
+
+      [Install]
+      WantedBy=multi-user.target
+
 %{ if tailscale_enabled }
   #  Tailscale watchdog (auto-heal sidecar route/online regressions) 
-  - path: /usr/local/bin/openclaw-tailscale-watchdog
+  - path: /usr/local/bin/agent-stack-tailscale-watchdog
     permissions: "0755"
     owner: root:root
     content: |
       #!/usr/bin/env bash
       set -euo pipefail
 
-      TS_CONTAINER="openclaw-tailscale-1"
-      if ! docker ps --format '{{.Names}}' | grep -qx "$TS_CONTAINER"; then
+      TS_CONTAINER=$(docker compose -f /opt/agent-stack/docker-compose.yml ps -q tailscale 2>/dev/null || true)
+      if [ -z "$TS_CONTAINER" ]; then
         exit 0
       fi
 
       ONLINE=$(docker exec "$TS_CONTAINER" tailscale --socket=/tmp/tailscaled.sock status --json 2>/dev/null | jq -r '.Self.Online // false' || echo false)
       ROUTE_LINES=$(docker exec "$TS_CONTAINER" sh -lc 'cat /proc/net/route | wc -l' 2>/dev/null || echo 0)
       if [ "$ONLINE" != "true" ] || [ "$ROUTE_LINES" -le 1 ]; then
-        logger -t openclaw-tailscale-watchdog "restarting $TS_CONTAINER (online=$ONLINE routes=$ROUTE_LINES)"
+        logger -t agent-stack-tailscale-watchdog "restarting tailscale sidecar (online=$ONLINE routes=$ROUTE_LINES)"
         docker restart "$TS_CONTAINER" >/dev/null
       fi
 
-  - path: /etc/systemd/system/openclaw-tailscale-watchdog.service
+  - path: /etc/systemd/system/agent-stack-tailscale-watchdog.service
     permissions: "0644"
     owner: root:root
     content: |
       [Unit]
-      Description=OpenClaw Tailscale watchdog
+      Description=AgentStack Tailscale watchdog
       After=docker.service
 
       [Service]
       Type=oneshot
-      ExecStart=/usr/local/bin/openclaw-tailscale-watchdog
+      ExecStart=/usr/local/bin/agent-stack-tailscale-watchdog
 
-  - path: /etc/systemd/system/openclaw-tailscale-watchdog.timer
+  - path: /etc/systemd/system/agent-stack-tailscale-watchdog.timer
     permissions: "0644"
     owner: root:root
     content: |
       [Unit]
-      Description=Run OpenClaw Tailscale watchdog every minute
+      Description=Run AgentStack Tailscale watchdog every minute
 
       [Timer]
       OnBootSec=45s
       OnUnitActiveSec=60s
-      Unit=openclaw-tailscale-watchdog.service
+      Unit=agent-stack-tailscale-watchdog.service
 
       [Install]
       WantedBy=timers.target
 %{ endif }
 
   #  Volume mount script (provider-specific) 
-  - path: /root/mount-openclaw-volume.sh
+  - path: /root/mount-agent-stack-volume.sh
     permissions: "0755"
     owner: root:root
     content: |
@@ -290,9 +599,11 @@ write_files:
       set -euo pipefail
       exec >> /var/log/openclaw-bootstrap.log 2>&1
 
-      mkdir -p /opt/openclaw/data /opt/openclaw/data/workspace /opt/openclaw/tailscale-state
+      mkdir -p \
+        /opt/agent-stack/data \
+        /opt/agent-stack/tailscale-state
 
-%{~ if provider_type == "aws" ~}
+%{ if provider_type == "aws" }
       #  AWS: find EBS volume by NVMe serial 
       # t3/m5/c5 (Nitro) rename /dev/xvdf  /dev/nvmeXn1; stable ID = serial
       VOLUME_ID="${ebs_volume_id}"
@@ -317,7 +628,25 @@ write_files:
         exit 1
       fi
       echo "[volume] Found EBS volume at $DEVICE"
-%{~ else ~}
+%{ else }
+%{ if provider_type == "hetzner" }
+      # Hetzner Cloud: find volume by stable ID symlink
+      VOLUME_ID="${hcloud_volume_id}"
+      DEVICE="/dev/disk/by-id/scsi-0HC_Volume_$VOLUME_ID"
+
+      echo "[volume] Waiting for Hetzner Cloud volume $VOLUME_ID..."
+      for attempt in $(seq 1 30); do
+        [ -e "$DEVICE" ] && break
+        echo "[volume] Attempt $attempt/30  symlink not present yet, sleeping 5 s..."
+        sleep 5
+      done
+
+      if [ ! -e "$DEVICE" ]; then
+        echo "[volume] ERROR: Hetzner Cloud volume $VOLUME_ID not found after 150 s" >&2
+        exit 1
+      fi
+      echo "[volume] Found Hetzner Cloud volume at $DEVICE"
+%{ else }
       #  DigitalOcean: find volume by symlink 
       VOLUME_NAME="${do_volume_name}"
       DEVICE="/dev/disk/by-id/scsi-0DO_Volume_$VOLUME_NAME"
@@ -337,37 +666,42 @@ write_files:
 
       # Unmount DO auto-mount if the volume was attached before this script ran
       if CURRENT_MOUNT=$(findmnt -n -o TARGET --source "$DEVICE" 2>/dev/null); then
-        if [ "$CURRENT_MOUNT" != "/opt/openclaw/data" ]; then
+        if [ "$CURRENT_MOUNT" != "/opt/agent-stack/data" ]; then
           echo "[volume] Unmounting DO auto-mount at $CURRENT_MOUNT"
           umount "$CURRENT_MOUNT" || true
         fi
       fi
-%{~ endif ~}
+%{ endif }
+%{ endif }
 
       #  Format if first use 
       if ! blkid "$DEVICE" > /dev/null 2>&1; then
         echo "[volume] Formatting $DEVICE as ext4..."
-        mkfs.ext4 -L openclaw-data -F "$DEVICE"
+        mkfs.ext4 -L agent-stack-data -F "$DEVICE"
       fi
 
       #  Mount by UUID for stable fstab entry 
       UUID=$(blkid -s UUID -o value "$DEVICE")
       echo "[volume] UUID: $UUID"
 
-      if ! mountpoint -q /opt/openclaw/data; then
-        mount -o defaults,nofail UUID="$UUID" /opt/openclaw/data
+      if mountpoint -q /opt/openclaw/data; then
+        echo "[volume] Unmounting legacy mountpoint /opt/openclaw/data"
+        umount /opt/openclaw/data || true
       fi
 
-      if ! grep -q "$UUID" /etc/fstab; then
-        echo "UUID=$UUID /opt/openclaw/data ext4 defaults,nofail 0 2" >> /etc/fstab
+      if ! mountpoint -q /opt/agent-stack/data; then
+        mount -o defaults,nofail UUID="$UUID" /opt/agent-stack/data
       fi
 
-      # OpenClaw runs as uid/gid 1000 (node user inside the container)
-      chown -R 1000:1000 /opt/openclaw/data
+      sed -i "\|UUID=$UUID /opt/openclaw/data |d" /etc/fstab || true
+      if ! grep -qE "UUID=$UUID[[:space:]]+/opt/agent-stack/data[[:space:]]" /etc/fstab; then
+        echo "UUID=$UUID /opt/agent-stack/data ext4 defaults,nofail 0 2" >> /etc/fstab
+      fi
+
       echo "[volume] Mount complete."
 
   #  Main bootstrap script 
-  - path: /root/install-openclaw.sh
+  - path: /root/install-agent-stack.sh
     permissions: "0755"
     owner: root:root
     content: |
@@ -377,7 +711,7 @@ write_files:
       NEEDS_RESTART=0
 
       echo "========================================================"
-      echo " OpenClaw Bootstrap  $(date)"
+      echo " AgentStack Bootstrap  $(date)"
       echo "========================================================"
 
       # 1. Ensure standardized admin user exists on both providers
@@ -414,7 +748,35 @@ write_files:
 
       # 3. Persistent volume
       echo "[volume] Mounting persistent storage..."
-      /root/mount-openclaw-volume.sh
+      /root/mount-agent-stack-volume.sh
+      /usr/local/bin/agent-stack-migrate-layout
+
+      OPENCLAW_ENABLED='${openclaw_enabled}'
+      HERMES_ENABLED='${hermes_enabled}'
+      N8N_ENABLED='${n8n_enabled}'
+      LOCAL_POSTGRES_ENABLED='${local_postgres_enabled}'
+      CADDY_ENABLED='${caddy_enabled}'
+      UI_AUTH_PASSWORD='${ui_auth_password}'
+
+      configure_caddyfile() {
+        if [ "$CADDY_ENABLED" != "true" ]; then
+          echo "[caddy] Skipped (public_domain_enabled=false)."
+          return 0
+        fi
+
+        if [ ! -f /opt/agent-stack/Caddyfile.template ]; then
+          echo "[caddy] WARNING: /opt/agent-stack/Caddyfile.template missing; public domains will not start."
+          return 1
+        fi
+
+        echo "[caddy] Rendering Caddyfile with hashed basic-auth password..."
+        CADDY_HASH=$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$UI_AUTH_PASSWORD")
+        sed "s|__UI_AUTH_HASH__|$CADDY_HASH|g" /opt/agent-stack/Caddyfile.template > /opt/agent-stack/Caddyfile
+        chmod 600 /opt/agent-stack/Caddyfile
+        echo "[caddy] Caddyfile rendered."
+      }
+
+      configure_caddyfile
 
       OPENAI_CODEX_AUTH_JSON_BASE64='${openai_codex_auth_json_base64}'
 
@@ -424,11 +786,11 @@ write_files:
           return 0
         fi
 
-        echo "[openai-codex] Importing Codex CLI auth into /opt/openclaw/codex/auth.json..."
-        install -d -m 700 -o 1000 -g 1000 /opt/openclaw/codex
-        printf '%s' "$OPENAI_CODEX_AUTH_JSON_BASE64" | base64 --decode > /opt/openclaw/codex/auth.json
-        chown 1000:1000 /opt/openclaw/codex/auth.json
-        chmod 600 /opt/openclaw/codex/auth.json
+        echo "[openai-codex] Importing Codex CLI auth into /opt/agent-stack/codex/auth.json..."
+        install -d -m 700 -o 1000 -g 1000 /opt/agent-stack/codex
+        printf '%s' "$OPENAI_CODEX_AUTH_JSON_BASE64" | base64 --decode > /opt/agent-stack/codex/auth.json
+        chown 1000:1000 /opt/agent-stack/codex/auth.json
+        chmod 600 /opt/agent-stack/codex/auth.json
       }
 
       sync_openai_codex_auth
@@ -469,7 +831,7 @@ write_files:
 
       configure_swap
 
-      OPENCLAW_CONFIG="/opt/openclaw/data/openclaw.json"
+      OPENCLAW_CONFIG="/opt/agent-stack/data/openclaw/openclaw.json"
       OPENCLAW_CONFIG_MODE_INPUT="${openclaw_config_mode}"
       PREEXISTING_OPENCLAW_CONFIG=0
       if [ -f "$OPENCLAW_CONFIG" ]; then
@@ -519,37 +881,42 @@ write_files:
           return 0
         fi
 
-        local workspace_dir="/opt/openclaw/data/workspace"
-        local soul_source="/opt/openclaw/templates/SOUL.balanced.md"
+        local workspace_dir="/opt/agent-stack/data/openclaw/workspace"
+        local soul_source="/opt/agent-stack/templates/SOUL.balanced.md"
         case "$STARTER_SOUL_PROFILE" in
           builder)
-            soul_source="/opt/openclaw/templates/SOUL.builder.md"
+            soul_source="/opt/agent-stack/templates/SOUL.builder.md"
             ;;
           researcher)
-            soul_source="/opt/openclaw/templates/SOUL.researcher.md"
+            soul_source="/opt/agent-stack/templates/SOUL.researcher.md"
             ;;
         esac
 
         mkdir -p "$workspace_dir"
         chown 1000:1000 "$workspace_dir" || true
         seed_file_if_missing "$soul_source" "$workspace_dir/SOUL.md"
-        seed_file_if_missing "/opt/openclaw/templates/AGENTS.default.md" "$workspace_dir/AGENTS.md"
-        seed_file_if_missing "/opt/openclaw/templates/TOOLS.default.md" "$workspace_dir/TOOLS.md"
-        seed_file_if_missing "/opt/openclaw/templates/USER.default.md" "$workspace_dir/USER.md"
+        seed_file_if_missing "/opt/agent-stack/templates/AGENTS.default.md" "$workspace_dir/AGENTS.md"
+        seed_file_if_missing "/opt/agent-stack/templates/TOOLS.default.md" "$workspace_dir/TOOLS.md"
+        seed_file_if_missing "/opt/agent-stack/templates/USER.default.md" "$workspace_dir/USER.md"
       }
 
-      # 5. Start OpenClaw
-      echo "[openclaw] Enabling and starting OpenClaw service..."
+      # 5. Start AgentStack
+      echo "[stack] Enabling and starting AgentStack stack service..."
       systemctl daemon-reload
+      systemctl enable agent-stack
       systemctl enable openclaw
 %{ if tailscale_enabled }
-      systemctl enable --now openclaw-tailscale-watchdog.timer
+      systemctl enable --now agent-stack-tailscale-watchdog.timer
 %{ endif }
-      systemctl start openclaw
+      systemctl start agent-stack
+      systemctl start openclaw || true
 
       wait_openclaw_healthy() {
+        if [ "$OPENCLAW_ENABLED" != "true" ]; then
+          return 1
+        fi
         for attempt in $(seq 1 60); do
-          OPENCLAW_CONTAINER_ID=$(docker compose -f /opt/openclaw/docker-compose.yml ps -q openclaw || true)
+          OPENCLAW_CONTAINER_ID=$(docker compose -f /opt/agent-stack/docker-compose.yml ps -q openclaw || true)
           if [ -n "$OPENCLAW_CONTAINER_ID" ]; then
             HEALTH_STATUS=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$OPENCLAW_CONTAINER_ID" 2>/dev/null || echo "")
             if [ "$HEALTH_STATUS" = "healthy" ] || [ "$HEALTH_STATUS" = "running" ]; then
@@ -576,13 +943,13 @@ write_files:
       # Prevent long-running/interactive CLI calls from hanging bootstrap forever.
       run_openclaw_cli() {
         if command -v timeout >/dev/null 2>&1; then
-          timeout "$${OPENCLAW_CLI_TIMEOUT_SECONDS:-30}" docker exec openclaw-openclaw-1 openclaw "$@"
+          timeout "$${OPENCLAW_CLI_TIMEOUT_SECONDS:-30}" docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw "$@"
         else
-          docker exec openclaw-openclaw-1 openclaw "$@"
+          docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw "$@"
         fi
       }
 
-      OPENCLAW_ENV_FILE="/opt/openclaw/.env"
+      OPENCLAW_ENV_FILE="/opt/agent-stack/.env"
       env_value() {
         local key="$1"
         sed -n "s/^$key=//p" "$OPENCLAW_ENV_FILE" | tail -n 1 || true
@@ -596,10 +963,14 @@ write_files:
 
       # Seed starter files only after OpenClaw has initialized once, so any
       # OpenClaw-native first-run files are preserved and take precedence.
-      if wait_openclaw_healthy; then
-        seed_starter_workspace_files
+      if [ "$OPENCLAW_ENABLED" = "true" ]; then
+        if wait_openclaw_healthy; then
+          seed_starter_workspace_files
+        else
+          echo "[starter] WARNING: OpenClaw did not become healthy; skipping starter file seed to avoid clobbering first-run files."
+        fi
       else
-        echo "[starter] WARNING: OpenClaw did not become healthy; skipping starter file seed to avoid clobbering first-run files."
+        echo "[starter] OpenClaw is disabled; skipping OpenClaw starter files."
       fi
 
       config_customizations_enabled() {
@@ -635,7 +1006,7 @@ write_files:
             has_env_key OPENAI_API_KEY
             ;;
           openai-codex)
-            [ -s /opt/openclaw/codex/auth.json ]
+            [ -s /opt/agent-stack/codex/auth.json ]
             ;;
           google)
             has_env_key GEMINI_API_KEY
@@ -736,7 +1107,7 @@ write_files:
         fi
       }
 
-      if config_customizations_enabled; then
+      if [ "$OPENCLAW_ENABLED" = "true" ] && config_customizations_enabled; then
         echo "[config] Applying optional channel and model bootstrap customizations."
 
         if wait_openclaw_healthy; then
@@ -766,7 +1137,7 @@ write_files:
           if has_env_key ANTHROPIC_AUTH_KEY; then
             echo "[anthropic] Registering legacy Anthropic setup-token..."
             if wait_openclaw_healthy; then
-              if docker exec openclaw-openclaw-1 openclaw onboard --non-interactive \
+              if run_openclaw_cli onboard --non-interactive \
                   --auth-choice token \
                   --token-provider anthropic \
                   --token "${anthropic_auth_key}" \
@@ -820,7 +1191,7 @@ write_files:
           echo "[models] WARNING: OpenClaw not ready; skipped model configuration."
         fi
       else
-        echo "[config] Config mode is '$OPENCLAW_CONFIG_MODE_EFFECTIVE'; skipping optional channel and model customizations."
+        echo "[config] OpenClaw disabled or config mode is '$OPENCLAW_CONFIG_MODE_EFFECTIVE'; skipping optional channel and model customizations."
       fi
 
       TAILSCALE_DNS=""
@@ -829,7 +1200,7 @@ write_files:
       echo "[tailscale] Waiting for Tailscale sidecar..."
       TS_CONTAINER_ID=""
       for attempt in $(seq 1 40); do
-        TS_CONTAINER_ID=$(docker compose -f /opt/openclaw/docker-compose.yml ps -q tailscale || true)
+        TS_CONTAINER_ID=$(docker compose -f /opt/agent-stack/docker-compose.yml ps -q tailscale || true)
         if [ -n "$TS_CONTAINER_ID" ] && docker exec "$TS_CONTAINER_ID" tailscale --socket=/tmp/tailscaled.sock status --json 2>/dev/null | jq -e '.Self.Online == true' >/dev/null 2>&1; then
           break
         fi
@@ -842,60 +1213,83 @@ write_files:
         if [ -n "$TAILSCALE_DNS" ]; then
           echo "[tailscale] Serve URL: https://$TAILSCALE_DNS"
         else
-          echo "[tailscale] Sidecar started. Check logs with: docker compose -f /opt/openclaw/docker-compose.yml logs tailscale"
+          echo "[tailscale] Sidecar started. Check logs with: docker compose -f /opt/agent-stack/docker-compose.yml logs tailscale"
         fi
       else
         echo "[tailscale] WARNING: Tailscale sidecar container not detected."
       fi
 %{ endif }
 
-      # 7. Always refresh gateway token and allowed origins.
-      echo "[openclaw] Refreshing gateway token and gateway.controlUi.allowedOrigins..."
-      PROJECT_ORIGIN=""
+      # 7. Refresh OpenClaw gateway token and allowed origins when OpenClaw is enabled.
+      if [ "$OPENCLAW_ENABLED" = "true" ]; then
+        echo "[openclaw] Refreshing gateway token and gateway.controlUi.allowedOrigins..."
+        PROJECT_ORIGIN=""
 %{ if tailscale_enabled }
-      PROJECT_ORIGIN="https://${project_name}"
+        PROJECT_ORIGIN="https://${project_name}"
 %{ endif }
-      if wait_for_openclaw_config; then
-        ORIGINS_JSON=$(jq -nc --arg project_origin "$PROJECT_ORIGIN" --arg tailscale_dns "$TAILSCALE_DNS" '[
-          "http://127.0.0.1:18789",
-          "http://localhost:18789",
-          (if $project_origin != "" then $project_origin else empty end),
-          (if $tailscale_dns != "" then "https://" + $tailscale_dns else empty end)
-        ] | unique')
-        TMP_CONFIG=$(mktemp)
-        if jq --argjson origins "$ORIGINS_JSON" --arg gateway_token "${gateway_token}" '.gateway = (.gateway // {}) | .gateway.auth = ((.gateway.auth // {}) + { mode: "token", token: $gateway_token }) | .gateway.controlUi = ((.gateway.controlUi // {}) + { allowedOrigins: $origins })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
-          if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
-            mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
-            chown 1000:1000 "$OPENCLAW_CONFIG" || true
-            echo "[openclaw] Updated gateway.auth.token and gateway.controlUi.allowedOrigins."
-            mark_openclaw_restart_needed
+        PUBLIC_OPENCLAW_ORIGIN=""
+%{ if caddy_enabled && openclaw_domain != "" }
+        PUBLIC_OPENCLAW_ORIGIN="https://${openclaw_domain}"
+%{ endif }
+        if wait_for_openclaw_config; then
+          ORIGINS_JSON=$(jq -nc --arg project_origin "$PROJECT_ORIGIN" --arg tailscale_dns "$TAILSCALE_DNS" --arg public_origin "$PUBLIC_OPENCLAW_ORIGIN" '[
+            "http://127.0.0.1:18789",
+            "http://localhost:18789",
+            (if $project_origin != "" then $project_origin else empty end),
+            (if $tailscale_dns != "" then "https://" + $tailscale_dns else empty end),
+            (if $public_origin != "" then $public_origin else empty end)
+          ] | unique')
+          TMP_CONFIG=$(mktemp)
+          if jq --argjson origins "$ORIGINS_JSON" --arg gateway_token "${gateway_token}" '.gateway = (.gateway // {}) | .gateway.auth = ((.gateway.auth // {}) + { mode: "token", token: $gateway_token }) | .gateway.controlUi = ((.gateway.controlUi // {}) + { allowedOrigins: $origins })' "$OPENCLAW_CONFIG" > "$TMP_CONFIG"; then
+            if ! cmp -s "$TMP_CONFIG" "$OPENCLAW_CONFIG"; then
+              mv "$TMP_CONFIG" "$OPENCLAW_CONFIG"
+              chown 1000:1000 "$OPENCLAW_CONFIG" || true
+              echo "[openclaw] Updated gateway.auth.token and gateway.controlUi.allowedOrigins."
+              mark_openclaw_restart_needed
+            else
+              rm -f "$TMP_CONFIG"
+              echo "[openclaw] Gateway config already up to date."
+            fi
           else
             rm -f "$TMP_CONFIG"
-            echo "[openclaw] Gateway config already up to date."
+            echo "[openclaw] WARNING: Failed to update gateway config."
           fi
         else
-          rm -f "$TMP_CONFIG"
-          echo "[openclaw] WARNING: Failed to update gateway config."
+          echo "[openclaw] WARNING: $OPENCLAW_CONFIG not found; skipped gateway config update."
         fi
       else
-        echo "[openclaw] WARNING: $OPENCLAW_CONFIG not found; skipped gateway config update."
+        echo "[openclaw] OpenClaw is disabled; skipped gateway config update."
       fi
 
       if [ "$NEEDS_RESTART" = "1" ]; then
         echo "[openclaw] Applying accumulated config changes with one final restart..."
-        systemctl restart openclaw
+        systemctl restart agent-stack
         wait_openclaw_healthy || echo "[openclaw] WARNING: OpenClaw did not become healthy after final restart."
       fi
 
       echo "========================================================"
       echo " Bootstrap complete  $(date)"
+      echo " Services:  ${enabled_services_json}"
 %{ if tailscale_enabled }
-      echo " Dashboard: https://${project_name}  (via Tailscale Serve sidecar)"
-%{ else }
-      echo " Dashboard: ssh -L 18789:127.0.0.1:18789 ${admin_username}@<IP>"
+%{ if openclaw_enabled }
+      echo " OpenClaw:  https://${project_name}  (via Tailscale Serve sidecar)"
 %{ endif }
-      echo " Logs:      journalctl -u openclaw -f"
+%{ else }
+%{ if openclaw_enabled }
+      echo " OpenClaw:  ssh -L 18789:127.0.0.1:18789 ${admin_username}@<IP>"
+%{ endif }
+%{ endif }
+%{ if hermes_enabled }
+      echo " Hermes:    ssh -L 9119:127.0.0.1:9119 ${admin_username}@<IP>"
+%{ endif }
+%{ if n8n_enabled }
+      echo " n8n:       ssh -L 5678:127.0.0.1:5678 ${admin_username}@<IP>"
+%{ endif }
+%{ if caddy_enabled }
+      echo " Public UI: Caddy is enabled; use the configured service domains."
+%{ endif }
+      echo " Logs:      journalctl -u agent-stack -f"
       echo "========================================================"
 
 runcmd:
-  - /root/install-openclaw.sh
+  - /root/install-agent-stack.sh

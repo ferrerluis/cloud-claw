@@ -1,7 +1,7 @@
 # Claw Setup Skill Black-Box Eval
 
 Use this eval to test whether an agent can handle the ambiguous user request
-`help me set up my cloud-claw` without being given the rubric, answer sheet, or
+`help me set up my AgentStack` without being given the rubric, answer sheet, or
 the name of the setup skill.
 
 ## Evaluation Integrity
@@ -16,7 +16,7 @@ Do not give the agent under test:
 - the simulated user profile
 - the expected commands
 - the expected answer payload
-- the skill name `claw-setup`
+- the skill name `agent-stack-setup`
 
 The agent under test should receive only the user-facing prompt and the minimum
 safety boundary needed to prevent real infrastructure mutation. If the runner
@@ -29,13 +29,13 @@ do not disclose any other test details.
 Preferred black-box prompt:
 
 ```text
-help me set up my cloud-claw
+help me set up my AgentStack
 ```
 
 Permitted safety-wrapped prompt when command blocking is unavailable:
 
 ```text
-help me set up my cloud-claw
+help me set up my AgentStack
 
 Safety boundary for this session: do not run Terraform/OpenTofu apply or destroy,
 and do not run any command that creates, mutates, or deletes cloud resources.
@@ -53,7 +53,7 @@ checkout. The isolated copy should exclude sensitive and stateful files:
 - `*.tfstate.*`
 - `.ssh/`
 - `gateway_token`
-- `skills/claw-setup/evals/`
+- `skills/agent-stack-setup/evals/`
 
 The agent should also run with an isolated `HOME` when the harness supports it,
 so repo helpers cannot read the operator's real `~/.codex/auth.json` or other

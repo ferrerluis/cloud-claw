@@ -7,10 +7,12 @@
 - `YOUR_AWS_ACCESS_KEY_ID`
 - `YOUR_AWS_SECRET_ACCESS_KEY`
 - `YOUR_DIGITALOCEAN_API_TOKEN`
+- `YOUR_HETZNER_CLOUD_API_TOKEN`
 - `sk-ant-api03-...`
 - `sk-ant-oat01-...`
 - `sk-...`
 - `dop_v1_...`
+- `hcloud_...`
 - `AIzaSy...`
 - `tskey-auth-...`
 

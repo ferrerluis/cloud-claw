@@ -6,7 +6,7 @@ SHOW_SECRETS=0
 
 usage() {
   cat <<'EOF'
-Usage: skills/claw-doctor/scripts/collect_diagnostics.sh [--show-secrets]
+Usage: skills/agent-stack-doctor/scripts/collect_diagnostics.sh [--show-secrets]
 
 By default, secret-bearing Terraform outputs are redacted.
 Use --show-secrets only when you intentionally need the raw values.
@@ -45,7 +45,7 @@ redact_output() {
   fi
 
   case "$name" in
-    gateway_token)
+    gateway_token|ui_auth_password)
       printf '<redacted>'
       return
       ;;
@@ -97,9 +97,13 @@ for path in \
   terraform.tfvars.example \
   variables.tf \
   outputs.tf \
+  bin/agent-stack-ssh \
+  bin/agent-stack-ssh-clean \
   bin/cloud-claw-ssh \
   bin/cloud-claw-ssh-clean \
   .ssh/config \
+  .ssh/id_ed25519_agent_stack \
+  .ssh/id_ed25519_agent_stack.pub \
   .ssh/id_ed25519_cloud_claw \
   .ssh/id_ed25519_cloud_claw.pub
 do
@@ -117,6 +121,12 @@ if command -v terraform >/dev/null 2>&1 && terraform -chdir="$ROOT_DIR" output -
     tailscale_note \
     dashboard_url \
     dashboard_url_with_token_import \
+    openclaw_url \
+    hermes_url \
+    n8n_url \
+    n8n_webhook_url \
+    ui_auth_username \
+    ui_auth_password \
     gateway_token \
     pair_latest_command \
     repo_pair_latest_command \
