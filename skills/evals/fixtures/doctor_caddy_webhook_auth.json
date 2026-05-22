@@ -1,0 +1,1 @@
+{"deployment":"agent-stack","containers":{"caddy":"running","n8n":"healthy"},"symptom":"webhooks receive basic auth challenge"}

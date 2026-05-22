@@ -251,8 +251,9 @@ resource "aws_instance" "this" {
   key_name               = aws_key_pair.this.key_name
   availability_zone      = local.az
 
-  # user_data includes rendered cloud-init which embeds the EBS volume ID
-  user_data                   = local.cloud_init
+  # cloud-init handles gzip-compressed user data; this keeps the expanded
+  # AgentStack bootstrap under EC2's user-data size limit.
+  user_data_base64            = base64gzip(local.cloud_init)
   user_data_replace_on_change = true
 
   root_block_device {

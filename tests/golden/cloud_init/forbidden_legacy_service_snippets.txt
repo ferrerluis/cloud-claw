@@ -1,0 +1,8 @@
+/opt/openclaw/data/services/hermes
+/opt/openclaw/data/services/n8n
+/opt/openclaw/data/services/postgres
+/opt/openclaw/data/services/caddy
+/opt/agent-stack/data/services/hermes
+/opt/agent-stack/data/services/n8n
+/opt/agent-stack/data/services/postgres
+/opt/agent-stack/data/services/caddy

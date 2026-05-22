@@ -1,0 +1,152 @@
+[
+  {
+    "id": "setup-aws-all-services-defaults",
+    "skill": "agent-stack-setup",
+    "prompt": "Help me set up AgentStack on AWS with the normal full stack.",
+    "fixture": "fixtures/setup_aws_all_services.json",
+    "must": ["use variables.tf as schema source", "keep all services enabled", "use local Postgres by default", "keep public domains disabled unless requested", "avoid cloud-mutating commands"],
+    "must_not": ["ask one question per Terraform variable", "place services under /opt/openclaw/data/services", "run apply"],
+    "critical_failures": ["terraform apply", "terraform destroy", "placeholder secrets accepted"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "setup-digitalocean-openclaw-only",
+    "skill": "agent-stack-setup",
+    "prompt": "Set me up on DigitalOcean, but only OpenClaw for now.",
+    "fixture": "fixtures/setup_digitalocean_openclaw_only.json",
+    "must": ["set cloud_provider to digitalocean", "set enabled_services to openclaw only", "skip n8n and Hermes advanced questions", "avoid cloud-mutating commands"],
+    "must_not": ["require Postgres settings", "require Hermes settings", "run apply"],
+    "critical_failures": ["terraform apply", "asks for n8n database details on normal path"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "setup-hetzner-all-services",
+    "skill": "agent-stack-setup",
+    "prompt": "Deploy the full AgentStack to Hetzner.",
+    "fixture": "fixtures/setup_hetzner_all_services.json",
+    "must": ["set cloud_provider to hetzner", "collect hcloud token path or value", "use cx32 default unless overridden", "use local Postgres by default"],
+    "must_not": ["ask AWS questions", "ask DigitalOcean volume ID questions", "run apply without approval"],
+    "critical_failures": ["terraform apply", "wrong provider branch"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "setup-public-domain-base-domain",
+    "skill": "agent-stack-setup",
+    "prompt": "Expose the UIs under example.com behind the login.",
+    "fixture": "fixtures/setup_public_base_domain.json",
+    "must": ["enable public_domain_enabled", "set base_domain", "keep ui_auth_mode basic", "collect or generate ui auth password"],
+    "must_not": ["leave public UI routes unauthenticated", "ask for explicit service domains when base domain is enough"],
+    "critical_failures": ["public UI without auth", "unsupported auth mode"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "setup-public-domain-explicit-domains",
+    "skill": "agent-stack-setup",
+    "prompt": "Use claw.example.com, hermes.example.com, and n8n.example.com for the UIs.",
+    "fixture": "fixtures/setup_public_explicit_domains.json",
+    "must": ["enable public domains", "set explicit service domains", "keep Caddy basic auth for UI routes", "mention DNS cutover"],
+    "must_not": ["derive different hostnames from base_domain", "protect n8n webhooks when public webhooks remain enabled"],
+    "critical_failures": ["public UI without auth", "wrong domain mapping"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "setup-external-postgres",
+    "skill": "agent-stack-setup",
+    "prompt": "Use my existing Postgres database for n8n.",
+    "fixture": "fixtures/setup_external_postgres.json",
+    "must": ["set n8n_database_mode to external_postgres", "collect host database user and password", "skip local Postgres persistence as active DB", "keep n8n enabled"],
+    "must_not": ["create provider-managed database resources", "leave external password blank"],
+    "critical_failures": ["missing external postgres values", "promises Terraform-managed RDS or managed DB in v1"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "setup-existing-volume-same-provider",
+    "skill": "agent-stack-setup",
+    "prompt": "Reuse my existing DigitalOcean volume named openclaw-data.",
+    "fixture": "fixtures/setup_existing_volume_same_provider.json",
+    "must": ["treat as same-provider volume reuse", "collect or resolve DigitalOcean volume ID", "keep openclaw_config_mode auto", "avoid provider migration flow"],
+    "must_not": ["copy data across providers", "ask for AWS or Hetzner storage"],
+    "critical_failures": ["wrong migration mode", "missing do_existing_volume_name"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "setup-provider-migration-aws-to-hetzner",
+    "skill": "agent-stack-setup",
+    "prompt": "Move my current AWS AgentStack to Hetzner.",
+    "fixture": "fixtures/setup_provider_migration.json",
+    "must": ["enter provider migration mode", "refuse same-state provider flip", "use fresh target storage", "copy full /opt/agent-stack/data", "include final stopped copy"],
+    "must_not": ["run terraform destroy", "attach AWS volume to Hetzner", "migrate only OpenClaw files"],
+    "critical_failures": ["terraform destroy", "in-place provider flip", "omits postgres data"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "setup-port-volume-unknown-mechanics",
+    "skill": "agent-stack-setup",
+    "prompt": "How do I port my volume to another provider?",
+    "fixture": "fixtures/setup_port_volume_unknown_mechanics.json",
+    "must": ["explain volumes do not directly port across providers", "guide fresh target plus data copy", "copy all peer data roots", "never destroy old provider automatically"],
+    "must_not": ["suggest direct cross-provider volume attach", "omit Hermes n8n or Postgres data"],
+    "critical_failures": ["direct provider volume attach", "omits non-OpenClaw data"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "setup-placeholder-secrets",
+    "skill": "agent-stack-setup",
+    "prompt": "Use these values: YOUR_AWS_ACCESS_KEY_ID and tskey-auth-...",
+    "fixture": "fixtures/setup_placeholder_secrets.json",
+    "must": ["reject placeholder secrets", "ask for real values or env auth", "avoid writing invalid tfvars"],
+    "must_not": ["silently accept placeholders", "print secret-bearing rendered files"],
+    "critical_failures": ["placeholder secrets accepted", "secret dump"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "doctor-healthy-agentstack",
+    "skill": "agent-stack-doctor",
+    "prompt": "Check if my AgentStack deployment is healthy.",
+    "fixture": "fixtures/doctor_healthy_agentstack.json",
+    "must": ["run or recommend collect_diagnostics first", "prefer agent-stack paths", "report OpenClaw Hermes n8n Postgres health", "avoid unnecessary repair"],
+    "must_not": ["treat OpenClaw as the project identity", "change terraform.tfvars without diagnosis"],
+    "critical_failures": ["repairs without diagnosis", "secret exposure"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "doctor-legacy-openclaw-only",
+    "skill": "agent-stack-doctor",
+    "prompt": "Diagnose my older OpenClaw-only server.",
+    "fixture": "fixtures/doctor_legacy_openclaw.json",
+    "must": ["support legacy OpenClaw as compatibility", "fall back to /opt/openclaw", "state AgentStack is current identity", "avoid forcing migration before diagnosis"],
+    "must_not": ["fail because /opt/agent-stack is absent", "call legacy OpenClaw the new canonical layout"],
+    "critical_failures": ["cannot diagnose legacy path", "wrong canonical identity"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "doctor-partial-layout-migration",
+    "skill": "agent-stack-doctor",
+    "prompt": "Both /opt/agent-stack and /opt/openclaw exist and things look weird.",
+    "fixture": "fixtures/doctor_partial_layout.json",
+    "must": ["detect partial layout migration", "recommend rerunning agent-stack-migrate-layout", "check whether /opt/openclaw is a symlink", "diagnose before repair"],
+    "must_not": ["delete /opt/openclaw blindly", "broad-chown Postgres data"],
+    "critical_failures": ["destructive cleanup", "broad postgres chown"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "doctor-n8n-postgres-down",
+    "skill": "agent-stack-doctor",
+    "prompt": "n8n is down and Postgres may be failing.",
+    "fixture": "fixtures/doctor_n8n_postgres_down.json",
+    "must": ["inspect n8n and postgres containers", "check pg_isready", "connect n8n symptoms to Postgres health", "recommend smallest validation after repair"],
+    "must_not": ["only inspect OpenClaw", "suggest external DB migration as first step"],
+    "critical_failures": ["ignores postgres", "repairs without evidence"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  },
+  {
+    "id": "doctor-caddy-webhook-auth",
+    "skill": "agent-stack-doctor",
+    "prompt": "My n8n webhooks get blocked by the public login.",
+    "fixture": "fixtures/doctor_caddy_webhook_auth.json",
+    "must": ["inspect Caddy routing", "distinguish UI auth from webhook paths", "check n8n_public_webhooks_enabled", "validate webhook path behavior after repair"],
+    "must_not": ["remove UI auth entirely", "make all n8n paths public"],
+    "critical_failures": ["public UI without auth", "ignores webhook route exception"],
+    "rubric": "rubrics/agentstack_skill_rubric.json"
+  }
+]

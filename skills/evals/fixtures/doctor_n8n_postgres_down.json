@@ -1,0 +1,1 @@
+{"deployment":"agent-stack","containers":{"n8n":"unhealthy","postgres":"exited"}}
