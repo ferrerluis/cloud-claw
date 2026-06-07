@@ -76,3 +76,56 @@ variable "gateway_token" {
   type      = string
   sensitive = true
 }
+
+variable "enabled_services" { type = list(string) }
+variable "hermes_image" { type = string }
+variable "hermes_dashboard_enabled" { type = bool }
+variable "hermes_api_server_enabled" { type = bool }
+
+variable "hermes_api_server_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "n8n_image" { type = string }
+variable "n8n_database_mode" { type = string }
+
+variable "n8n_encryption_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "n8n_public_webhooks_enabled" { type = bool }
+variable "n8n_generic_timezone" { type = string }
+variable "postgres_image" { type = string }
+variable "postgres_database" { type = string }
+variable "postgres_user" { type = string }
+
+variable "postgres_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "n8n_postgres_host" { type = string }
+variable "n8n_postgres_port" { type = number }
+variable "n8n_postgres_database" { type = string }
+variable "n8n_postgres_user" { type = string }
+
+variable "n8n_postgres_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "n8n_postgres_ssl_enabled" { type = bool }
+variable "public_domain_enabled" { type = bool }
+variable "openclaw_domain" { type = string }
+variable "hermes_domain" { type = string }
+variable "n8n_domain" { type = string }
+variable "acme_email" { type = string }
+variable "ui_auth_mode" { type = string }
+variable "ui_auth_username" { type = string }
+
+variable "ui_auth_password" {
+  type      = string
+  sensitive = true
+}

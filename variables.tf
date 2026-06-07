@@ -3,20 +3,20 @@
 # ─────────────────────────────────────────────────────────
 
 variable "cloud_provider" {
-  description = "Which cloud provider to deploy on. Valid values: \"aws\" or \"digitalocean\"."
+  description = "Which cloud provider to deploy on. Valid values: \"aws\", \"digitalocean\", or \"hetzner\"."
   type        = string
   default     = "aws"
 
   validation {
-    condition     = contains(["aws", "digitalocean"], var.cloud_provider)
-    error_message = "cloud_provider must be \"aws\" or \"digitalocean\"."
+    condition     = contains(["aws", "digitalocean", "hetzner"], var.cloud_provider)
+    error_message = "cloud_provider must be \"aws\", \"digitalocean\", or \"hetzner\"."
   }
 }
 
 variable "project_name" {
-  description = "Short name used to tag/name all created resources (e.g. \"openclaw\" or \"mybot\")."
+  description = "Short name used to tag/name all created resources."
   type        = string
-  default     = "openclaw"
+  default     = "agent-stack"
 }
 
 variable "admin_username" {
@@ -131,6 +131,47 @@ variable "do_existing_volume_name" {
 }
 
 # ─────────────────────────────────────────────────────────
+# Hetzner Cloud
+# ─────────────────────────────────────────────────────────
+
+variable "hcloud_token" {
+  description = "Hetzner Cloud API token."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "hcloud_location" {
+  description = "Hetzner Cloud location slug (for example \"ash\", \"hil\", \"fsn1\", \"nbg1\", or \"hel1\")."
+  type        = string
+  default     = "ash"
+}
+
+variable "hcloud_server_type" {
+  description = "Hetzner Cloud server type. Default cx32 is sized for the full AgentStack profile."
+  type        = string
+  default     = "cx32"
+}
+
+variable "hcloud_image" {
+  description = "Hetzner Cloud image slug."
+  type        = string
+  default     = "ubuntu-22.04"
+}
+
+variable "hcloud_disk_size_gb" {
+  description = "Size in GB for the extra Hetzner Cloud volume."
+  type        = number
+  default     = 50
+}
+
+variable "hcloud_existing_volume_id" {
+  description = "Existing Hetzner Cloud volume ID to attach instead of creating a new one."
+  type        = string
+  default     = ""
+}
+
+# ─────────────────────────────────────────────────────────
 # SSH / network
 # ─────────────────────────────────────────────────────────
 
@@ -155,19 +196,19 @@ variable "generate_repo_ssh_config" {
 variable "repo_ssh_host_alias" {
   description = "Host alias written into ./.ssh/config."
   type        = string
-  default     = "cloud-claw"
+  default     = "agent-stack"
 }
 
 variable "repo_ssh_identity_file" {
   description = "IdentityFile value written into ./.ssh/config."
   type        = string
-  default     = "./.ssh/id_ed25519_cloud_claw"
+  default     = "./.ssh/id_ed25519_agent_stack"
 }
 
 variable "repo_ssh_private_key_path" {
   description = "Repo-relative private key path used for auto key resolution/generation when ssh_public_key is empty."
   type        = string
-  default     = ".ssh/id_ed25519_cloud_claw"
+  default     = ".ssh/id_ed25519_agent_stack"
 }
 
 # ─────────────────────────────────────────────────────────
@@ -175,14 +216,14 @@ variable "repo_ssh_private_key_path" {
 # ─────────────────────────────────────────────────────────
 
 variable "anthropic_api_key" {
-  description = "Anthropic API key for Claude models. This is the preferred Anthropic credential for cloud-claw."
+  description = "Anthropic API key for Claude models. This is the preferred Anthropic credential for AgentStack."
   type        = string
   default     = ""
   sensitive   = true
 }
 
 variable "anthropic_auth_key" {
-  description = "Legacy Anthropic setup-token for Claude Code style auth flows. Optional and not recommended for normal cloud-claw setup; prefer anthropic_api_key."
+  description = "Legacy Anthropic setup-token for Claude Code style auth flows. Optional and not recommended for normal AgentStack setup; prefer anthropic_api_key."
   type        = string
   default     = ""
   sensitive   = true
@@ -336,11 +377,214 @@ variable "gateway_token" {
 }
 
 # ─────────────────────────────────────────────────────────
+# Agent / automation stack
+# ─────────────────────────────────────────────────────────
+
+variable "enabled_services" {
+  description = "Services to run on the instance. Allowed values: openclaw, hermes, n8n."
+  type        = list(string)
+  default     = ["openclaw", "hermes", "n8n"]
+
+  validation {
+    condition = (
+      length(var.enabled_services) > 0 &&
+      alltrue([
+        for service in var.enabled_services : contains(["openclaw", "hermes", "n8n"], service)
+      ])
+    )
+    error_message = "enabled_services must include at least one service and only: openclaw, hermes, n8n."
+  }
+}
+
+variable "hermes_image" {
+  description = "Hermes Agent Docker image."
+  type        = string
+  default     = "nousresearch/hermes-agent:latest"
+}
+
+variable "hermes_dashboard_enabled" {
+  description = "Run the Hermes dashboard side-process inside the Hermes gateway container."
+  type        = bool
+  default     = true
+}
+
+variable "hermes_api_server_enabled" {
+  description = "Enable the Hermes OpenAI-compatible API server."
+  type        = bool
+  default     = true
+}
+
+variable "hermes_api_server_key" {
+  description = "Hermes API server key. Leave blank to auto-generate and persist in Terraform state."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "n8n_image" {
+  description = "n8n Docker image."
+  type        = string
+  default     = "docker.n8n.io/n8nio/n8n:stable"
+}
+
+variable "n8n_database_mode" {
+  description = "Database mode for n8n. local_postgres runs Postgres on the persistent volume; external_postgres uses the supplied connection settings."
+  type        = string
+  default     = "local_postgres"
+
+  validation {
+    condition     = contains(["local_postgres", "external_postgres"], var.n8n_database_mode)
+    error_message = "n8n_database_mode must be \"local_postgres\" or \"external_postgres\"."
+  }
+}
+
+variable "n8n_encryption_key" {
+  description = "n8n encryption key. Leave blank to auto-generate and persist in Terraform state."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "n8n_public_webhooks_enabled" {
+  description = "When public domains are enabled, leave n8n webhook routes unauthenticated for external services."
+  type        = bool
+  default     = true
+}
+
+variable "n8n_generic_timezone" {
+  description = "Timezone passed to n8n's GENERIC_TIMEZONE setting."
+  type        = string
+  default     = "America/New_York"
+}
+
+variable "postgres_image" {
+  description = "Postgres Docker image used when n8n_database_mode = local_postgres."
+  type        = string
+  default     = "postgres:17-alpine"
+}
+
+variable "postgres_database" {
+  description = "Local Postgres database name for n8n."
+  type        = string
+  default     = "n8n"
+}
+
+variable "postgres_user" {
+  description = "Local Postgres username for n8n."
+  type        = string
+  default     = "n8n"
+}
+
+variable "postgres_password" {
+  description = "Local Postgres password. Leave blank to auto-generate and persist in Terraform state."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "external_postgres_host" {
+  description = "External Postgres host used when n8n_database_mode = external_postgres."
+  type        = string
+  default     = ""
+}
+
+variable "external_postgres_port" {
+  description = "External Postgres port used when n8n_database_mode = external_postgres."
+  type        = number
+  default     = 5432
+}
+
+variable "external_postgres_database" {
+  description = "External Postgres database used when n8n_database_mode = external_postgres."
+  type        = string
+  default     = "n8n"
+}
+
+variable "external_postgres_user" {
+  description = "External Postgres user used when n8n_database_mode = external_postgres."
+  type        = string
+  default     = "n8n"
+}
+
+variable "external_postgres_password" {
+  description = "External Postgres password used when n8n_database_mode = external_postgres."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "external_postgres_ssl_enabled" {
+  description = "Enable SSL for n8n's external Postgres connection."
+  type        = bool
+  default     = true
+}
+
+variable "public_domain_enabled" {
+  description = "Expose selected UIs through public HTTPS domains behind a reverse-proxy login."
+  type        = bool
+  default     = false
+}
+
+variable "base_domain" {
+  description = "Base domain used to derive service hostnames when public_domain_enabled = true (openclaw.<base>, hermes.<base>, n8n.<base>)."
+  type        = string
+  default     = ""
+}
+
+variable "openclaw_domain" {
+  description = "Explicit public domain for the OpenClaw UI. Overrides base_domain derivation."
+  type        = string
+  default     = ""
+}
+
+variable "hermes_domain" {
+  description = "Explicit public domain for the Hermes dashboard/API. Overrides base_domain derivation."
+  type        = string
+  default     = ""
+}
+
+variable "n8n_domain" {
+  description = "Explicit public domain for the n8n UI and webhooks. Overrides base_domain derivation."
+  type        = string
+  default     = ""
+}
+
+variable "acme_email" {
+  description = "Email address Caddy uses for ACME certificate registration. Optional, but recommended when public domains are enabled."
+  type        = string
+  default     = ""
+}
+
+variable "ui_auth_mode" {
+  description = "Reverse-proxy UI auth mode. v1 supports basic auth only."
+  type        = string
+  default     = "basic"
+
+  validation {
+    condition     = contains(["basic"], var.ui_auth_mode)
+    error_message = "ui_auth_mode must be \"basic\"."
+  }
+}
+
+variable "ui_auth_username" {
+  description = "Username for the public-domain reverse-proxy login."
+  type        = string
+  default     = "admin"
+}
+
+variable "ui_auth_password" {
+  description = "Password for the public-domain reverse-proxy login. Leave blank to auto-generate and persist in Terraform state."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# ─────────────────────────────────────────────────────────
 # Tailscale
 # ─────────────────────────────────────────────────────────
 
 variable "tailscale_enabled" {
-  description = "Install Tailscale for private access to the OpenClaw dashboard. Strongly recommended — disabling this leaves the dashboard accessible only via SSH tunnel."
+  description = "Install Tailscale for private access to selected AgentStack UIs. Strongly recommended — disabling this leaves UIs accessible only via SSH tunnel unless public domains are enabled."
   type        = bool
   default     = true
 }

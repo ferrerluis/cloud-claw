@@ -4,7 +4,7 @@ Use this note when the setup conversation reaches provider credentials.
 
 ## Anthropic
 
-- For cloud-claw, the normal Anthropic path should be `anthropic_api_key`.
+- For AgentStack, the normal Anthropic path should be `anthropic_api_key`.
 - Anthropic's API docs say API requests authenticate with an API key in the `x-api-key` header.
 - Anthropic's Claude Code docs also support interactive account login inside Claude Code itself, but they do not document a "copy this auth token into a third-party app" setup flow for external tools.
 - Anthropic's support docs say that if `ANTHROPIC_API_KEY` is set, Claude Code prioritizes that API key over subscription login.
@@ -41,8 +41,8 @@ Recommended setup behavior:
   3. Explain that this value may later appear in Terraform-managed state or cloud-init data.
   4. If the user agrees, ask them to run `codex login` if they have not authenticated Codex locally yet.
   5. Tell them to choose the ChatGPT sign-in path, not API-key login, for `openai-codex/*`.
-  6. Verify the login is importable with `python3 skills/claw-setup/scripts/import_codex_auth.py --inspect`.
-  7. Store the base64 output from `python3 skills/claw-setup/scripts/import_codex_auth.py` in `openai_codex_auth_json_base64`.
+  6. Verify the login is importable with `python3 skills/agent-stack-setup/scripts/import_codex_auth.py --inspect`.
+  7. Store the base64 output from `python3 skills/agent-stack-setup/scripts/import_codex_auth.py` in `openai_codex_auth_json_base64`.
   8. If the user does not agree, offer three safe alternatives: paste an already-exported `openai_codex_auth_json_base64`, switch to `openai/*` API-key models, or defer model auth until later.
 
 Why this is the preferred path:
@@ -56,7 +56,7 @@ Why this is the preferred path:
 Implementation note:
 
 - Terraform now supports `openai_codex_auth_json_base64`.
-- Bootstrap writes that payload to `/opt/openclaw/codex/auth.json` and mounts it into the OpenClaw container as `/home/node/.codex/auth.json`.
+- Bootstrap writes that payload to `/opt/agent-stack/codex/auth.json` and mounts it into the OpenClaw container as `/home/node/.codex/auth.json`.
 - Renderer validation now requires `openai_codex_auth_json_base64` when any configured model uses `openai-codex/*`.
 - Because this value is treated like other setup secrets, the skill should remind the user that it will live in `terraform.tfvars` and may also appear in Terraform-managed state or cloud-init data.
 
@@ -67,7 +67,7 @@ Implementation note:
 
 Recommended skill behavior:
 
-- If the user wants to reuse a DigitalOcean volume and has a valid `do_token`, resolve the volume ID from the name via `python3 skills/claw-setup/scripts/resolve_do_volume.py --name <volume-name>`.
+- If the user wants to reuse a DigitalOcean volume and has a valid `do_token`, resolve the volume ID from the name via `python3 skills/agent-stack-setup/scripts/resolve_do_volume.py --name <volume-name>`.
 - Only ask the user for the raw volume ID if automated lookup is unavailable.
 
 ## Low-Value Defaults

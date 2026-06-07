@@ -3,7 +3,39 @@ locals {
   instance_public_ip = (
     var.cloud_provider == "aws"
     ? one(module.aws[*].instance_public_ip)
-    : one(module.digitalocean[*].instance_public_ip)
+    : (
+      var.cloud_provider == "digitalocean"
+      ? one(module.digitalocean[*].instance_public_ip)
+      : one(module.hetzner[*].instance_public_ip)
+    )
+  )
+
+  openclaw_url = !local.openclaw_enabled ? "disabled" : (
+    var.public_domain_enabled && local.resolved_openclaw_domain != ""
+    ? "https://${local.resolved_openclaw_domain}"
+    : (
+      var.tailscale_enabled
+      ? "https://${var.project_name}  (via Tailscale Serve sidecar — connect your device to the same tailnet first)"
+      : "http://localhost:18789  (after running the SSH tunnel shown in tailscale_note)"
+    )
+  )
+
+  hermes_url = !local.hermes_enabled ? "disabled" : (
+    var.public_domain_enabled && local.resolved_hermes_domain != ""
+    ? "https://${local.resolved_hermes_domain}"
+    : "http://localhost:9119  (after running: ssh -L 9119:127.0.0.1:9119 ${var.admin_username}@${local.instance_public_ip})"
+  )
+
+  n8n_url = !local.n8n_enabled ? "disabled" : (
+    var.public_domain_enabled && local.resolved_n8n_domain != ""
+    ? "https://${local.resolved_n8n_domain}"
+    : "http://localhost:5678  (after running: ssh -L 5678:127.0.0.1:5678 ${var.admin_username}@${local.instance_public_ip})"
+  )
+
+  n8n_webhook_url = !local.n8n_enabled ? "disabled" : (
+    var.public_domain_enabled && local.resolved_n8n_domain != ""
+    ? "https://${local.resolved_n8n_domain}/webhook"
+    : "http://localhost:5678/webhook  (after running the n8n SSH tunnel)"
   )
 }
 
@@ -23,8 +55,8 @@ output "ssh_command" {
 }
 
 output "repo_ssh_command" {
-  description = "Repo-local SSH wrapper command (uses ./bin/cloud-claw-ssh and reads host from Terraform outputs)."
-  value       = "./bin/cloud-claw-ssh"
+  description = "Repo-local SSH wrapper command (uses ./bin/agent-stack-ssh and reads host from Terraform outputs)."
+  value       = "./bin/agent-stack-ssh"
 }
 
 output "repo_ssh_config_path" {
@@ -40,7 +72,7 @@ output "resolved_ssh_public_key_source" {
 output "tailscale_note" {
   description = "Tailscale access information."
   value = var.tailscale_enabled ? (
-    "Tailscale is enabled. Once the instance boots (~2 min), the sidecar device '${var.project_name}' should appear in your Tailscale admin console. Dashboard is published with Tailscale Serve: https://${var.project_name} (or use dashboard_url_with_token_import for first-time auto-auth)."
+    local.openclaw_enabled ? "Tailscale is enabled. Once the instance boots (~2 min), the sidecar device '${var.project_name}' should appear in your Tailscale admin console. OpenClaw is published with Tailscale Serve: https://${var.project_name} (or use dashboard_url_with_token_import for first-time auto-auth)." : "Tailscale is enabled. OpenClaw is disabled, so no Tailscale Serve route is configured by default."
     ) : (
     "Tailscale is DISABLED. Use an SSH tunnel to reach the dashboard: ssh -L 18789:127.0.0.1:18789 ${var.admin_username}@${local.instance_public_ip}  then open http://localhost:18789"
   )
@@ -48,19 +80,19 @@ output "tailscale_note" {
 
 output "dashboard_url" {
   description = "OpenClaw dashboard URL (accessible after bootstrap completes, ~2-3 min after apply)."
-  value = var.tailscale_enabled ? (
-    "https://${var.project_name}  (via Tailscale Serve sidecar — connect your device to the same tailnet first)"
-    ) : (
-    "http://localhost:18789  (after running the SSH tunnel shown in tailscale_note)"
-  )
+  value       = local.openclaw_url
 }
 
 output "dashboard_url_with_token_import" {
   description = "First-time login URL that auto-imports the gateway token into Control UI via #token fragment."
-  value = var.tailscale_enabled ? (
-    nonsensitive("https://${var.project_name}/#token=${local.resolved_gateway_token}")
-    ) : (
-    nonsensitive("http://localhost:18789/#token=${local.resolved_gateway_token}  (after running the SSH tunnel shown in tailscale_note)")
+  value = !local.openclaw_enabled ? "disabled" : (
+    var.public_domain_enabled && local.resolved_openclaw_domain != ""
+    ? nonsensitive("https://${local.resolved_openclaw_domain}/#token=${local.resolved_gateway_token}")
+    : (
+      var.tailscale_enabled
+      ? nonsensitive("https://${var.project_name}/#token=${local.resolved_gateway_token}")
+      : nonsensitive("http://localhost:18789/#token=${local.resolved_gateway_token}  (after running the SSH tunnel shown in tailscale_note)")
+    )
   )
 }
 
@@ -71,17 +103,17 @@ output "gateway_token" {
 
 output "pair_latest_command" {
   description = "Run after opening dashboard_url_with_token_import to approve the latest pending paired-device request."
-  value       = "ssh ${var.admin_username}@${local.instance_public_ip} 'docker exec openclaw-openclaw-1 openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789'"
+  value       = local.openclaw_enabled ? "ssh ${var.admin_username}@${local.instance_public_ip} 'docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789'" : "disabled"
 }
 
 output "repo_pair_latest_command" {
   description = "Repo-local wrapper command to approve the latest pending paired-device request."
-  value       = "./bin/cloud-claw-ssh -- docker exec openclaw-openclaw-1 openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789"
+  value       = local.openclaw_enabled ? "./bin/agent-stack-ssh -- docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789" : "disabled"
 }
 
 output "whatsapp_login_command" {
   description = "Interactive command to link WhatsApp by scanning QR from your terminal."
-  value       = "ssh -t ${var.admin_username}@${local.instance_public_ip} 'sudo docker exec -it openclaw-openclaw-1 openclaw channels login --channel whatsapp --verbose'"
+  value       = local.openclaw_enabled ? "ssh -t ${var.admin_username}@${local.instance_public_ip} 'docker compose -f /opt/agent-stack/docker-compose.yml exec openclaw openclaw channels login --channel whatsapp --verbose'" : "disabled"
 }
 
 output "bootstrap_log_command" {
@@ -91,5 +123,36 @@ output "bootstrap_log_command" {
 
 output "repo_bootstrap_log_command" {
   description = "Repo-local wrapper command to watch bootstrap logs."
-  value       = "./bin/cloud-claw-ssh -- tail -f /var/log/openclaw-bootstrap.log"
+  value       = "./bin/agent-stack-ssh -- tail -f /var/log/openclaw-bootstrap.log"
+}
+
+output "openclaw_url" {
+  description = "OpenClaw UI URL or access hint."
+  value       = local.openclaw_url
+}
+
+output "hermes_url" {
+  description = "Hermes dashboard URL or access hint."
+  value       = local.hermes_url
+}
+
+output "n8n_url" {
+  description = "n8n UI URL or access hint."
+  value       = local.n8n_url
+}
+
+output "n8n_webhook_url" {
+  description = "n8n webhook base URL or access hint."
+  value       = local.n8n_webhook_url
+}
+
+output "ui_auth_username" {
+  description = "Username for the public-domain reverse-proxy login."
+  value       = var.public_domain_enabled ? var.ui_auth_username : "disabled"
+}
+
+output "ui_auth_password" {
+  description = "Password for the public-domain reverse-proxy login."
+  value       = var.public_domain_enabled ? local.resolved_ui_auth_password : "disabled"
+  sensitive   = true
 }

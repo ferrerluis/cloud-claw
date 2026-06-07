@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCRIPT = REPO_ROOT / "skills/claw-setup/scripts/render_tfvars.py"
+SCRIPT = REPO_ROOT / "skills/agent-stack-setup/scripts/render_tfvars.py"
 
 
 def run_render(
@@ -72,6 +72,9 @@ class RenderTfvarsTest(unittest.TestCase):
             }
         )
         self.assertIn('cloud_provider = "aws"', rendered)
+        self.assertIn('project_name = "agent-stack"', rendered)
+        self.assertIn('repo_ssh_host_alias = "agent-stack"', rendered)
+        self.assertIn('repo_ssh_private_key_path = ".ssh/id_ed25519_agent_stack"', rendered)
         self.assertIn('aws_ami_id = ""', rendered)
         self.assertIn("openclaw_swap_size_mb = 0", rendered)
         self.assertIn("openclaw_health_start_period_seconds = 120", rendered)
@@ -93,6 +96,22 @@ class RenderTfvarsTest(unittest.TestCase):
         self.assertIn('do_token = "do-real-token"', rendered)
         self.assertIn("tailscale_enabled = false", rendered)
 
+    def test_renders_fresh_hetzner_fixture(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "hetzner",
+                "hcloud_token": "real-hcloud-token",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_enabled": False,
+            }
+        )
+        self.assertIn('cloud_provider = "hetzner"', rendered)
+        self.assertIn('hcloud_token = "real-hcloud-token"', rendered)
+        self.assertIn('hcloud_server_type = "cx32"', rendered)
+
     def test_renders_existing_volume_fixture(self) -> None:
         _, rendered = run_render(
             {
@@ -110,6 +129,60 @@ class RenderTfvarsTest(unittest.TestCase):
         )
         self.assertIn('aws_existing_volume_id = "vol-0123456789abcdef0"', rendered)
         self.assertIn('openclaw_config_mode = "auto"', rendered)
+
+    def test_renders_all_services_defaults(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "aws",
+                "aws_access_key": "AKIAREALKEY123456",
+                "aws_secret_key": "super-secret",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_auth_key": "tskey-auth-real-value",
+            }
+        )
+        self.assertIn('enabled_services = [\n  "openclaw",\n  "hermes",\n  "n8n",\n]', rendered)
+        self.assertIn('n8n_database_mode = "local_postgres"', rendered)
+        self.assertIn('postgres_image = "postgres:17-alpine"', rendered)
+
+    def test_renders_openclaw_only_service_selection(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "aws",
+                "aws_access_key": "AKIAREALKEY123456",
+                "aws_secret_key": "super-secret",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "enabled_services": ["openclaw"],
+                "tailscale_auth_key": "tskey-auth-real-value",
+            }
+        )
+        self.assertIn('enabled_services = [\n  "openclaw",\n]', rendered)
+
+    def test_preserves_explicit_legacy_cloud_claw_values(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "aws",
+                "aws_access_key": "AKIAREALKEY123456",
+                "aws_secret_key": "super-secret",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "project_name": "openclaw",
+                "repo_ssh_host_alias": "cloud-claw",
+                "repo_ssh_identity_file": "./.ssh/id_ed25519_cloud_claw",
+                "repo_ssh_private_key_path": ".ssh/id_ed25519_cloud_claw",
+                "tailscale_auth_key": "tskey-auth-real-value",
+            }
+        )
+        self.assertIn('project_name = "openclaw"', rendered)
+        self.assertIn('repo_ssh_host_alias = "cloud-claw"', rendered)
+        self.assertIn('repo_ssh_private_key_path = ".ssh/id_ed25519_cloud_claw"', rendered)
 
     def test_allows_anthropic_api_key_without_legacy_auth_key(self) -> None:
         _, rendered = run_render(
@@ -141,6 +214,55 @@ class RenderTfvarsTest(unittest.TestCase):
             expect_success=False,
         )
         self.assertIn("openai_codex_auth_json_base64", result.stderr)
+
+    def test_rejects_external_postgres_without_connection_values(self) -> None:
+        result, _ = run_render(
+            {
+                "cloud_provider": "digitalocean",
+                "do_token": "do-real-token",
+                "openai_api_key": "real-openai-key",
+                "model_providers_enabled": ["openai"],
+                "default_model": "openai/gpt-5.3",
+                "fallback_models": [],
+                "n8n_database_mode": "external_postgres",
+                "tailscale_enabled": False,
+            },
+            expect_success=False,
+        )
+        self.assertIn("external_postgres_host", result.stderr)
+
+    def test_rejects_public_domain_without_domain_values(self) -> None:
+        result, _ = run_render(
+            {
+                "cloud_provider": "digitalocean",
+                "do_token": "do-real-token",
+                "openai_api_key": "real-openai-key",
+                "model_providers_enabled": ["openai"],
+                "default_model": "openai/gpt-5.3",
+                "fallback_models": [],
+                "public_domain_enabled": True,
+                "tailscale_enabled": False,
+            },
+            expect_success=False,
+        )
+        self.assertIn("public_domain_enabled", result.stderr)
+
+    def test_renders_public_domain_with_base_domain(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "digitalocean",
+                "do_token": "do-real-token",
+                "openai_api_key": "real-openai-key",
+                "model_providers_enabled": ["openai"],
+                "default_model": "openai/gpt-5.3",
+                "fallback_models": [],
+                "public_domain_enabled": True,
+                "base_domain": "example.com",
+                "tailscale_enabled": False,
+            }
+        )
+        self.assertIn("public_domain_enabled = true", rendered)
+        self.assertIn('base_domain = "example.com"', rendered)
 
     def test_renders_openai_codex_import(self) -> None:
         _, rendered = run_render(

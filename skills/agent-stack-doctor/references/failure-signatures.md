@@ -32,7 +32,9 @@
 - Reused volume behaves like a preserve install:
   - `openclaw_config_mode = "auto"` becomes preserve when bootstrap sees an existing `openclaw.json`.
 - Data recovery issues:
-  - Restore the contents under `/opt/openclaw/data`; do not move the mounted directory itself.
+  - Restore contents into `/opt/agent-stack/data`, preserving `openclaw`, `hermes`, `n8n`, `postgres`, and `caddy` as peer directories.
+- Partial layout migration:
+  - `/opt/agent-stack` and a real `/opt/openclaw` directory both exist. Rerun `/usr/local/bin/agent-stack-migrate-layout` after stopping the stack.
 
 ## Model and provider mismatch
 

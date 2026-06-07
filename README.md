@@ -1,20 +1,20 @@
-# cloud-claw
+# AgentStack
 
-> Terraform repo for a secure, self-hosted [OpenClaw](https://github.com/openclaw/openclaw) deployment.
-> Deploy to **AWS (EC2)** or **DigitalOcean (Droplet)** by changing a single variable.
-> After `terraform apply`, the server boots with OpenClaw already installed, configured, and running — no manual steps.
+> Terraform repo for a secure, self-hosted agent + automation stack.
+> Deploy OpenClaw, Hermes, n8n, and local Postgres to **AWS (EC2)**, **DigitalOcean (Droplet)**, or **Hetzner Cloud** by changing a single variable.
+> After `terraform apply`, the server boots with the selected services installed, configured, and running — no manual steps.
 
 ---
 
 ## What gets deployed
 
-| Component | AWS | DigitalOcean |
-|-----------|-----|-------------|
-| Compute | EC2 t3.small (1 vCPU / 2 GB) | Droplet s-2vcpu-2gb (2 vCPU / 2 GB / 60 GB root disk) |
-| Persistent storage | 50 GB gp3 EBS volume (separate from 20 GB OS disk) | 20 GB Block Storage volume (root disk already 60 GB) |
-| Networking | VPC, subnet, IGW, route table | VPC |
-| Firewall | Security Group: SSH + Tailscale UDP | Firewall: SSH + Tailscale UDP |
-| Private access | Tailscale (optional but strongly recommended) | same |
+| Component | AWS | DigitalOcean | Hetzner Cloud |
+|-----------|-----|--------------|---------------|
+| Compute | EC2 t3.small (1 vCPU / 2 GB) | Droplet s-2vcpu-2gb (2 vCPU / 2 GB / 60 GB root disk) | cx32 (default, sized for full stack) |
+| Persistent storage | 50 GB gp3 EBS volume | 20 GB Block Storage volume | 50 GB Cloud volume |
+| Networking | VPC, subnet, IGW, route table | VPC | Public server network |
+| Firewall | Security Group: SSH + Tailscale UDP, optional 80/443 | Firewall: SSH + Tailscale UDP, optional 80/443 | Firewall: SSH + Tailscale UDP, optional 80/443 |
+| Private access | Tailscale (optional but strongly recommended) | same | same |
 
 All sizes are defaults and are adjustable through variables.
 
@@ -24,9 +24,9 @@ On first boot, `cloud-init` runs a script that:
 
 1. Installs Docker and Docker Compose
 2. Locates, formats (first time), and mounts the persistent data volume
-3. Writes `/opt/openclaw/docker-compose.yml` and `/opt/openclaw/.env`
-4. Creates and starts a `systemd` service (`openclaw`) that runs `docker compose up`
-5. If enabled, starts a Tailscale sidecar container (shared network namespace with OpenClaw) that authenticates and runs `tailscale serve` to proxy `127.0.0.1:18789` over HTTPS on your tailnet
+3. Writes `/opt/agent-stack/docker-compose.yml` and `/opt/agent-stack/.env`
+4. Creates and starts a `systemd` service (`agent-stack`) that runs the selected stack with Docker Compose, with `openclaw.service` kept as a compatibility wrapper
+5. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` for OpenClaw over HTTPS on your tailnet
 6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste
 7. Applies `openclaw_config_mode`:
    - `auto` (default): preserve an existing `openclaw.json`, manage fresh installs
@@ -42,7 +42,7 @@ On first boot, `cloud-init` runs a script that:
     - ordered `fallback_models`
     - restricted to explicitly selected `model_providers_enabled`
 
-OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — never publicly exposed.
+OpenClaw, Hermes, n8n, and Postgres run as Docker containers. UI ports bind to `127.0.0.1` by default. If `public_domain_enabled = true`, Caddy opens 80/443, terminates HTTPS, and protects UI routes with basic auth. n8n webhook paths can remain public when `n8n_public_webhooks_enabled = true`.
 
 ---
 
@@ -52,7 +52,7 @@ OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — n
 |-------------|-------|
 | Terraform ≥ 1.5 | [Install](https://developer.hashicorp.com/terraform/install) |
 | SSH key pair | Optional; if omitted, Terraform auto-creates a repo-local keypair in `./.ssh` |
-| Cloud credentials | AWS access key + secret, **or** DigitalOcean API token |
+| Cloud credentials | AWS access key + secret, DigitalOcean API token, **or** Hetzner Cloud API token |
 | LLM API key(s) | At least one of: Anthropic, OpenAI, Groq, or Gemini |
 | Tailscale account (recommended) | [Sign up free](https://tailscale.com/) — generate an auth key |
 
@@ -62,8 +62,8 @@ OpenClaw runs as a Docker container with ports **bound to 127.0.0.1** only — n
 
 ```bash
 # 1. Clone
-git clone <this-repo> cloud-claw
-cd cloud-claw
+git clone <this-repo> agent-stack
+cd agent-stack
 
 # 2. Create your variables file (never commit this)
 cp terraform.tfvars.example terraform.tfvars
@@ -81,7 +81,7 @@ terraform apply
 
 # Terraform auto-resolves SSH key at plan/apply:
 # - if ssh_public_key is explicitly set, it uses that
-# - else it uses/creates ./.ssh/id_ed25519_cloud_claw(.pub)
+# - else it uses/creates ./.ssh/id_ed25519_agent_stack(.pub)
 # Terraform also writes ./.ssh/config (disable with generate_repo_ssh_config = false)
 
 # 6. Watch bootstrap (takes ~2-3 min)
@@ -93,17 +93,21 @@ After `apply` completes, Terraform prints:
 ```
 instance_public_ip     = "1.2.3.4"
 ssh_command            = "ssh admin@1.2.3.4"
-repo_ssh_command       = "./bin/cloud-claw-ssh"
+repo_ssh_command       = "./bin/agent-stack-ssh"
 repo_ssh_config_path   = "./.ssh/config"
 resolved_ssh_public_key_source = "existing_public_key"
 tailscale_note         = "Tailscale is enabled. Sidecar device 'openclaw' will appear in your admin console..."
 dashboard_url          = "https://openclaw  (via Tailscale Serve)"
 dashboard_url_with_token_import = "https://openclaw/#token=<gateway-token>"
-pair_latest_command    = "ssh admin@1.2.3.4 'docker exec openclaw-openclaw-1 openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789'"
-repo_pair_latest_command = "./bin/cloud-claw-ssh -- docker exec openclaw-openclaw-1 openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789"
-whatsapp_login_command = "ssh -t admin@1.2.3.4 'sudo docker exec -it openclaw-openclaw-1 openclaw channels login --channel whatsapp --verbose'"
+openclaw_url           = "https://openclaw  (via Tailscale Serve)"
+hermes_url             = "http://localhost:9119  (after SSH tunnel)"
+n8n_url                = "http://localhost:5678  (after SSH tunnel)"
+n8n_webhook_url        = "http://localhost:5678/webhook  (after SSH tunnel)"
+pair_latest_command    = "ssh admin@1.2.3.4 'docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789'"
+repo_pair_latest_command = "./bin/agent-stack-ssh -- docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789"
+whatsapp_login_command = "ssh -t admin@1.2.3.4 'docker compose -f /opt/agent-stack/docker-compose.yml exec openclaw openclaw channels login --channel whatsapp --verbose'"
 bootstrap_log_command  = "ssh admin@1.2.3.4 'tail -f /var/log/openclaw-bootstrap.log'"
-repo_bootstrap_log_command = "./bin/cloud-claw-ssh -- tail -f /var/log/openclaw-bootstrap.log"
+repo_bootstrap_log_command = "./bin/agent-stack-ssh -- tail -f /var/log/openclaw-bootstrap.log"
 ```
 
 Run `bootstrap_log_command` to watch the install progress in real time.
@@ -115,13 +119,13 @@ These helpers keep SSH behavior consistent per clone and avoid editing `~/.ssh/c
 
 ```bash
 # Connect (host/IP comes from terraform outputs)
-bin/cloud-claw-ssh
+bin/agent-stack-ssh
 
 # Run remote commands
-bin/cloud-claw-ssh -- tail -f /var/log/openclaw-bootstrap.log
+bin/agent-stack-ssh -- tail -f /var/log/openclaw-bootstrap.log
 
 # Kill stale local ssh client processes targeting the current instance
-bin/cloud-claw-ssh-clean
+bin/agent-stack-ssh-clean
 ```
 
 ---
@@ -167,7 +171,7 @@ aws_disk_size_gb  = 50
 aws_existing_volume_id = "vol-0abc123def456789"
 ```
 
-The bootstrap script will detect the volume by its NVMe serial number, skip formatting, and mount it at `/opt/openclaw/data`.
+The bootstrap script will detect the volume by its NVMe serial number, skip formatting, and mount it at `/opt/agent-stack/data`.
 
 ---
 
@@ -195,12 +199,101 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 
 ---
 
+## Hetzner Cloud setup
+
+1. Create a Hetzner Cloud project and API token.
+2. In `terraform.tfvars`, set `cloud_provider = "hetzner"` and fill in `hcloud_token`.
+3. Optionally set `hcloud_location`, `hcloud_server_type`, and `hcloud_disk_size_gb`.
+
+```hcl
+cloud_provider       = "hetzner"
+hcloud_token         = "..."
+hcloud_location      = "ash"
+hcloud_server_type   = "cx32"
+hcloud_disk_size_gb  = 50
+```
+
+**Reusing an existing Hetzner volume**:
+
+```hcl
+hcloud_existing_volume_id = "12345678"
+```
+
+The bootstrap script detects the volume through `/dev/disk/by-id/scsi-0HC_Volume_<id>` and mounts it at `/opt/agent-stack/data`.
+
+---
+
+## Agent + automation stack
+
+By default, AgentStack runs the complete stack:
+
+```hcl
+enabled_services = ["openclaw", "hermes", "n8n"]
+```
+
+You can run a narrower stack, for example:
+
+```hcl
+enabled_services = ["openclaw"]
+```
+
+n8n uses local Postgres by default:
+
+```hcl
+n8n_database_mode = "local_postgres"
+```
+
+Postgres data is stored on the persistent volume under `/opt/agent-stack/data/postgres`. OpenClaw, Hermes, n8n, Postgres, and Caddy are peer directories under `/opt/agent-stack/data`. To use a provider-managed or external database, set `n8n_database_mode = "external_postgres"` and provide the `external_postgres_*` connection values.
+
+---
+
+## Legacy layout and provider migration
+
+New deployments use `/opt/agent-stack`. Existing `/opt/openclaw` volumes are migrated by `/usr/local/bin/agent-stack-migrate-layout` on bootstrap:
+
+```text
+/opt/agent-stack/data/openclaw
+/opt/agent-stack/data/hermes
+/opt/agent-stack/data/n8n
+/opt/agent-stack/data/postgres
+/opt/agent-stack/data/caddy
+```
+
+Do not change `cloud_provider` in-place in the same Terraform state to move providers. Create a fresh target deployment, then copy data:
+
+```bash
+skills/agent-stack-setup/scripts/migrate_provider_data.sh --precopy --source admin@old-ip --target admin@new-ip
+skills/agent-stack-setup/scripts/migrate_provider_data.sh --final --source admin@old-ip --target admin@new-ip
+```
+
+`--precopy` leaves the source running but stops the target during import. `--final` stops both stacks before copying, starts only the target stack, and never destroys the old infrastructure.
+
+---
+
+## Optional public domains
+
+The default access model keeps UI ports private. To expose UIs through HTTPS behind a login gate:
+
+```hcl
+public_domain_enabled = true
+base_domain           = "example.com"
+acme_email            = "you@example.com"
+ui_auth_username      = "admin"
+ui_auth_password      = "" # blank = Terraform auto-generates
+```
+
+With `base_domain`, the service hosts derive as `openclaw.example.com`, `hermes.example.com`, and `n8n.example.com`. You can override them with `openclaw_domain`, `hermes_domain`, and `n8n_domain`.
+
+When public domains are enabled, firewalls open ports 80 and 443. UI routes require basic auth. n8n webhook paths remain public if `n8n_public_webhooks_enabled = true`.
+
+---
+
 ## Variables reference
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `cloud_provider` | `"aws"` | `"aws"` or `"digitalocean"` |
-| `project_name` | `"openclaw"` | Prefix for all resource names |
+| `cloud_provider` | `"aws"` | `"aws"`, `"digitalocean"`, or `"hetzner"` |
+| `project_name` | `"agent-stack"` | Prefix for all resource names |
 | `admin_username` | `"admin"` | Standard SSH/admin username created on the VM |
 | `aws_region` | `"us-east-1"` | AWS region |
 | `aws_access_key` | `""` | AWS access key (or use env vars) |
@@ -215,12 +308,18 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `do_disk_size_gb` | `20` | Extra block storage size (GB) |
 | `do_existing_volume_id` | `""` | Reuse existing DO volume (needs `do_existing_volume_name` too) |
 | `do_existing_volume_name` | `""` | Name of existing DO volume |
+| `hcloud_token` | `""` | Hetzner Cloud API token |
+| `hcloud_location` | `"ash"` | Hetzner Cloud location |
+| `hcloud_server_type` | `"cx32"` | Hetzner server type |
+| `hcloud_image` | `"ubuntu-22.04"` | Hetzner image slug |
+| `hcloud_disk_size_gb` | `50` | Hetzner Cloud volume size |
+| `hcloud_existing_volume_id` | `""` | Reuse existing Hetzner Cloud volume |
 | `ssh_public_key` | `""` | Optional explicit SSH public key; when empty, Terraform uses/creates repo-local key |
 | `allowed_ssh_cidr` | `"0.0.0.0/0"` | CIDR allowed on SSH port 22 |
 | `generate_repo_ssh_config` | `true` | Auto-write `./.ssh/config` during `terraform apply` |
-| `repo_ssh_host_alias` | `"cloud-claw"` | Host alias written to `./.ssh/config` |
-| `repo_ssh_identity_file` | `"./.ssh/id_ed25519_cloud_claw"` | IdentityFile written to `./.ssh/config` |
-| `repo_ssh_private_key_path` | `".ssh/id_ed25519_cloud_claw"` | Repo-relative key path for auto key resolution/generation |
+| `repo_ssh_host_alias` | `"agent-stack"` | Host alias written to `./.ssh/config` |
+| `repo_ssh_identity_file` | `"./.ssh/id_ed25519_agent_stack"` | IdentityFile written to `./.ssh/config` |
+| `repo_ssh_private_key_path` | `".ssh/id_ed25519_agent_stack"` | Repo-relative key path for auto key resolution/generation |
 | `anthropic_api_key` | `""` | Anthropic API key (pay-per-token models) |
 | `anthropic_auth_key` | `""` | Claude Code setup-token for native Anthropic provider auth (run `claude setup-token` to generate) |
 | `openai_api_key` | `""` | OpenAI API key |
@@ -241,6 +340,28 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 | `seed_starter_workspace_files` | `true` | Seed starter workspace files when missing (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, `USER.md`) |
 | `starter_soul_profile` | `"balanced"` | Starter SOUL profile (`balanced`, `builder`, `researcher`) |
 | `gateway_token` | `""` | Optional fixed gateway token (blank = Terraform auto-generates) |
+| `enabled_services` | `["openclaw", "hermes", "n8n"]` | Services to run |
+| `hermes_image` | `"nousresearch/hermes-agent:latest"` | Hermes Docker image |
+| `hermes_dashboard_enabled` | `true` | Enable Hermes dashboard |
+| `hermes_api_server_enabled` | `true` | Enable Hermes API server |
+| `hermes_api_server_key` | `""` | Optional fixed Hermes API key |
+| `n8n_image` | `"docker.n8n.io/n8nio/n8n:stable"` | n8n Docker image |
+| `n8n_database_mode` | `"local_postgres"` | `local_postgres` or `external_postgres` |
+| `n8n_encryption_key` | `""` | Optional fixed n8n encryption key |
+| `n8n_public_webhooks_enabled` | `true` | Leave webhook paths unauthenticated when public domains are enabled |
+| `n8n_generic_timezone` | `"America/New_York"` | n8n timezone |
+| `postgres_image` | `"postgres:17-alpine"` | Local Postgres image |
+| `postgres_database` | `"n8n"` | Local Postgres database |
+| `postgres_user` | `"n8n"` | Local Postgres user |
+| `postgres_password` | `""` | Optional fixed local Postgres password |
+| `external_postgres_*` | varies | External Postgres connection values for n8n |
+| `public_domain_enabled` | `false` | Enable Caddy HTTPS reverse proxy |
+| `base_domain` | `""` | Base domain used to derive service domains |
+| `openclaw_domain` / `hermes_domain` / `n8n_domain` | `""` | Explicit service domains |
+| `acme_email` | `""` | ACME email for Caddy |
+| `ui_auth_mode` | `"basic"` | Public-domain UI auth mode |
+| `ui_auth_username` | `"admin"` | Public-domain login username |
+| `ui_auth_password` | `""` | Optional fixed public-domain password |
 | `tailscale_enabled` | `true` | Install and configure Tailscale |
 | `tailscale_auth_key` | `""` | Tailscale auth key |
 
@@ -252,12 +373,18 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 |--------|-------------|
 | `instance_public_ip` | Public IP of the server |
 | `ssh_command` | Full SSH command |
-| `repo_ssh_command` | Repo-local SSH wrapper command (`./bin/cloud-claw-ssh`) |
+| `repo_ssh_command` | Repo-local SSH wrapper command (`./bin/agent-stack-ssh`) |
 | `repo_ssh_config_path` | Path to generated repo-local SSH config file |
 | `resolved_ssh_public_key_source` | Effective SSH key source (`tfvars_or_env`, `existing_public_key`, `derived_from_private_key`, `generated_new_keypair`) |
 | `tailscale_note` | Tailscale access instructions |
 | `dashboard_url` | URL to reach the OpenClaw UI |
 | `dashboard_url_with_token_import` | First-time URL that auto-imports token into Control UI |
+| `openclaw_url` | OpenClaw UI URL or access hint |
+| `hermes_url` | Hermes dashboard URL or access hint |
+| `n8n_url` | n8n UI URL or access hint |
+| `n8n_webhook_url` | n8n webhook base URL or access hint |
+| `ui_auth_username` | Public-domain login username |
+| `ui_auth_password` | Public-domain login password (sensitive) |
 | `gateway_token` | Gateway token value |
 | `pair_latest_command` | One-shot command to approve the latest pending device pairing |
 | `repo_pair_latest_command` | Same pairing approval using repo-local SSH wrapper |
@@ -270,10 +397,10 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 
 ## Security notes
 
-- **No public ports** for the OpenClaw dashboard — it binds to `127.0.0.1:18789` only.
+- **No public UI ports by default** — service UIs bind to `127.0.0.1` unless `public_domain_enabled = true`.
 - **Tailscale** is the recommended access path; when enabled, a Docker sidecar publishes HTTPS access with `tailscale serve`.
 - The Tailscale sidecar requires `/dev/net/tun` and `NET_ADMIN` / `NET_RAW` capabilities.
-- Only SSH (port 22) and Tailscale UDP (41641) are opened in firewall rules.
+- Only SSH (port 22) and Tailscale UDP (41641) are opened in firewall rules by default. Ports 80/443 open only when public domains are enabled.
 - `gateway_token` and `dashboard_url_with_token_import` outputs contain credentials. Treat Terraform output/state as sensitive.
 - **API keys** are injected into user_data / cloud-init. On AWS, user_data is accessible via the instance metadata API (IMDSv2 only, 1-hop limit enforced). For stricter security, use AWS Secrets Manager and fetch keys at boot instead.
 - **SSH CIDR**: set `allowed_ssh_cidr` to your own IP (`curl ifconfig.me`) — don't leave it `0.0.0.0/0` in production.
@@ -285,12 +412,13 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 ## Repository structure
 
 ```
-cloud-claw/
+agent-stack/
 ├── .gitignore                          # Excludes *.tfvars, .terraform/, state files, and repo-local SSH keys
 ├── bin/
-│   ├── cloud-claw-ssh                  # Repo-local SSH wrapper (reads terraform outputs)
-│   ├── cloud-claw-ssh-clean            # Kills stale local SSH client processes
-│   └── cloud-claw-ssh-create           # Generates repo-local SSH keypair (default: ./.ssh/id_ed25519_cloud_claw)
+│   ├── agent-stack-ssh                 # Repo-local SSH wrapper (reads terraform outputs)
+│   ├── agent-stack-ssh-clean           # Kills stale local SSH client processes
+│   ├── agent-stack-ssh-create          # Generates repo-local SSH keypair (default: ./.ssh/id_ed25519_agent_stack)
+│   └── cloud-claw-*                    # Compatibility wrappers for old local commands
 ├── README.md                           # This file
 ├── terraform.tfvars.example            # Template — copy to terraform.tfvars
 ├── versions.tf                         # Provider version constraints
@@ -306,6 +434,10 @@ cloud-claw/
     │   ├── main.tf                     # Droplet, volume, VPC, firewall
     │   ├── variables.tf
     │   └── outputs.tf
+    ├── hetzner/                        # Hetzner-specific resources
+    │   ├── main.tf                     # Server, volume, firewall
+    │   ├── variables.tf
+    │   └── outputs.tf
     └── common/
         └── templates/
             ├── cloud_init.yaml.tpl     # Shared bootstrap (Docker, Tailscale, OpenClaw)
@@ -316,10 +448,11 @@ cloud-claw/
 
 ## Resizing the instance
 
-Change `aws_instance_type` (or `do_droplet_size`) and re-run `terraform apply`.
+Change `aws_instance_type`, `do_droplet_size`, or `hcloud_server_type` and re-run `terraform apply`.
 
 - **AWS**: Terraform stops the instance, resizes it, and restarts it. The EBS data volume is unaffected.
 - **DigitalOcean**: Terraform will destroy and recreate the Droplet. The Block Storage volume persists (pass the existing volume ID/name to avoid losing data).
+- **Hetzner**: Terraform may recreate the server depending on the server-type change. The Cloud volume persists (pass the existing volume ID to avoid losing data).
 
 ---
 
@@ -341,6 +474,11 @@ doctl compute volume snapshot <volume-id> --snapshot-name "openclaw-$(date +%Y%m
 
 You can also enable [automated Droplet backups](https://docs.digitalocean.com/products/droplets/how-to/enable-backups/) from the DigitalOcean console.
 
+**Hetzner Cloud (manual)**:
+```bash
+hcloud volume create-snapshot <volume-id> --description "agent-stack-$(date +%Y%m%d)"
+```
+
 ---
 
 ## Google Drive sync (optional)
@@ -349,10 +487,10 @@ The `docker-compose.yml` written by cloud-init includes a commented-out `rclone`
 
 1. On the server, run `rclone config` and follow the [Google Drive setup guide](https://rclone.org/drive/).
 2. This creates `~root/.config/rclone/rclone.conf`.
-3. Uncomment the `rclone` service block in `/opt/openclaw/docker-compose.yml`.
-4. Run `systemctl restart openclaw` to apply the change.
+3. Uncomment the `rclone` service block in `/opt/agent-stack/docker-compose.yml`.
+4. Run `systemctl restart agent-stack` to apply the change.
 
-The sidecar will sync `/opt/openclaw/data/workspace` → `gdrive:openclaw-workspace` periodically.
+The sidecar will sync `/opt/agent-stack/data/openclaw/workspace` → `gdrive:openclaw-workspace` periodically.
 
 ---
 
@@ -362,4 +500,4 @@ The sidecar will sync `/opt/openclaw/data/workspace` → `gdrive:openclaw-worksp
 terraform destroy
 ```
 
-> **Note**: New EBS volumes and DO volumes created by this repo are intentionally *not* set to `prevent_destroy`, so `terraform destroy` will delete them. If you want to keep your data, take a snapshot before destroying, or set `aws_existing_volume_id` / `do_existing_volume_id` to detach the volume from Terraform management first.
+> **Note**: New EBS, DigitalOcean, and Hetzner volumes created by this repo are intentionally *not* set to `prevent_destroy`, so `terraform destroy` will delete them. If you want to keep your data, take a snapshot before destroying, or set `aws_existing_volume_id`, `do_existing_volume_id`, or `hcloud_existing_volume_id` to detach the volume from Terraform management first.

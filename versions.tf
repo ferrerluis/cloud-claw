@@ -10,6 +10,10 @@ terraform {
       source  = "digitalocean/digitalocean"
       version = "~> 2.0"
     }
+    hcloud = {
+      source  = "hetznercloud/hcloud"
+      version = "~> 1.50"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.0"

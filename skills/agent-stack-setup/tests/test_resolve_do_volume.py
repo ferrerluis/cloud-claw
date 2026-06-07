@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCRIPT = REPO_ROOT / "skills/claw-setup/scripts/resolve_do_volume.py"
+SCRIPT = REPO_ROOT / "skills/agent-stack-setup/scripts/resolve_do_volume.py"
 SPEC = importlib.util.spec_from_file_location("resolve_do_volume", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)

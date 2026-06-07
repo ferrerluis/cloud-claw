@@ -50,6 +50,7 @@ locals {
     admin_ssh_public_key                 = var.ssh_public_key
     ebs_volume_id                        = local.ebs_volume_id
     do_volume_name                       = ""
+    hcloud_volume_id                     = ""
     anthropic_api_key                    = var.anthropic_api_key
     anthropic_auth_key                   = var.anthropic_auth_key
     openai_api_key                       = var.openai_api_key
@@ -79,6 +80,39 @@ locals {
     starter_tools_md                     = file("${path.module}/../common/templates/starter/TOOLS.default.md")
     starter_user_md                      = file("${path.module}/../common/templates/starter/USER.default.md")
     gateway_token                        = var.gateway_token
+    enabled_services_json                = jsonencode(var.enabled_services)
+    openclaw_enabled                     = contains(var.enabled_services, "openclaw")
+    hermes_enabled                       = contains(var.enabled_services, "hermes")
+    n8n_enabled                          = contains(var.enabled_services, "n8n")
+    local_postgres_enabled               = contains(var.enabled_services, "n8n") && var.n8n_database_mode == "local_postgres"
+    caddy_enabled                        = var.public_domain_enabled
+    hermes_image                         = var.hermes_image
+    hermes_dashboard_enabled             = var.hermes_dashboard_enabled
+    hermes_api_server_enabled            = var.hermes_api_server_enabled
+    hermes_api_server_key                = var.hermes_api_server_key
+    n8n_image                            = var.n8n_image
+    n8n_database_mode                    = var.n8n_database_mode
+    n8n_encryption_key                   = var.n8n_encryption_key
+    n8n_public_webhooks_enabled          = var.n8n_public_webhooks_enabled
+    n8n_generic_timezone                 = var.n8n_generic_timezone
+    postgres_image                       = var.postgres_image
+    postgres_database                    = var.postgres_database
+    postgres_user                        = var.postgres_user
+    postgres_password                    = var.postgres_password
+    n8n_postgres_host                    = var.n8n_postgres_host
+    n8n_postgres_port                    = var.n8n_postgres_port
+    n8n_postgres_database                = var.n8n_postgres_database
+    n8n_postgres_user                    = var.n8n_postgres_user
+    n8n_postgres_password                = var.n8n_postgres_password
+    n8n_postgres_ssl_enabled             = var.n8n_postgres_ssl_enabled
+    public_domain_enabled                = var.public_domain_enabled
+    openclaw_domain                      = var.openclaw_domain
+    hermes_domain                        = var.hermes_domain
+    n8n_domain                           = var.n8n_domain
+    acme_email                           = var.acme_email
+    ui_auth_mode                         = var.ui_auth_mode
+    ui_auth_username                     = var.ui_auth_username
+    ui_auth_password                     = var.ui_auth_password
   })
 }
 
@@ -130,7 +164,7 @@ resource "aws_route_table_association" "this" {
 
 resource "aws_security_group" "this" {
   name        = "${var.project_name}-sg"
-  description = "OpenClaw: SSH access only. Tailscale handles private dashboard access."
+  description = "AgentStack: SSH access only. Tailscale handles private UI access."
   vpc_id      = aws_vpc.this.id
 
   ingress {
@@ -148,6 +182,17 @@ resource "aws_security_group" "this" {
       from_port   = 41641
       to_port     = 41641
       protocol    = "udp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.public_domain_enabled ? [80, 443] : []
+    content {
+      description = "Public HTTPS reverse proxy"
+      from_port   = ingress.value
+      to_port     = ingress.value
+      protocol    = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
     }
   }

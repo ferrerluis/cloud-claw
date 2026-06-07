@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCRIPT = REPO_ROOT / "skills/claw-setup/scripts/import_codex_auth.py"
+SCRIPT = REPO_ROOT / "skills/agent-stack-setup/scripts/import_codex_auth.py"
 
 
 def run_import(source_payload: dict[str, object], *extra_args: str) -> subprocess.CompletedProcess[str]:
