@@ -58,7 +58,7 @@ do_existing_volume_name = ""
 
 hcloud_token       = "YOUR_HETZNER_CLOUD_API_TOKEN"
 hcloud_location    = "ash"
-hcloud_server_type = "cx32" # sized for the full AgentStack profile
+hcloud_server_type = "cpx21" # sized for the full AgentStack profile
 hcloud_image       = "ubuntu-22.04"
 
 # Extra block storage volume in GB (default 50 GB)

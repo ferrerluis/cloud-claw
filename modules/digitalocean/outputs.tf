@@ -13,6 +13,11 @@ output "volume_name" {
   value       = local.do_volume_name
 }
 
+output "volume_id" {
+  description = "Block storage volume ID."
+  value       = local.do_volume_id
+}
+
 output "ssh_command" {
   description = "SSH command to connect to the Droplet."
   value       = "ssh ${var.admin_username}@${digitalocean_droplet.this.ipv4_address}"

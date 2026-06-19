@@ -40,6 +40,12 @@ class ProviderMigrationScriptTest(unittest.TestCase):
         self.assertIn("incoming/services/postgres", self.script)
         self.assertIn("target=/opt/agent-stack/data", self.script)
 
+    def test_ssh_commands_are_noninteractive_and_use_safe_remote_quoting(self) -> None:
+        self.assertIn("StrictHostKeyChecking=accept-new", self.script)
+        self.assertIn("UserKnownHostsFile=$known_hosts", self.script)
+        self.assertIn("printf -v quoted '%q' \"$1\"", self.script)
+        self.assertIn("sudo bash -lc $quoted", self.script)
+
 
 if __name__ == "__main__":
     unittest.main()

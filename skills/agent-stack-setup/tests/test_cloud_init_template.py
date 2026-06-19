@@ -12,72 +12,115 @@ from typing import Callable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-TEMPLATE = REPO_ROOT / "modules/common/templates/cloud_init.yaml.tpl"
+TEMPLATE_DIR = REPO_ROOT / "modules/common/templates"
+LOADER_TEMPLATE = TEMPLATE_DIR / "cloud_init.yaml.tpl"
+RUNTIME_DIR = TEMPLATE_DIR / "runtime"
+MAIN_TF = REPO_ROOT / "main.tf"
 
 
-class CloudInitTemplateTest(unittest.TestCase):
+class CloudInitLoaderTemplateTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.template = TEMPLATE.read_text(encoding="utf-8")
+        cls.loader = LOADER_TEMPLATE.read_text(encoding="utf-8")
 
-    def test_includes_stack_services_and_private_ports(self) -> None:
-        self.assertIn("openclaw:", self.template)
-        self.assertIn("hermes:", self.template)
-        self.assertIn("n8n:", self.template)
-        self.assertIn("postgres:", self.template)
-        self.assertIn("caddy:", self.template)
-        self.assertIn('"127.0.0.1:18789:18789"', self.template)
-        self.assertIn('"127.0.0.1:9119:9119"', self.template)
-        self.assertIn('"127.0.0.1:5678:5678"', self.template)
+    def test_loader_stays_small_and_defers_runtime_to_terraform(self) -> None:
+        self.assertIn("AgentStack first-boot loader", self.loader)
+        self.assertIn("/root/agent-stack-loader.sh", self.loader)
+        self.assertIn("/opt/agent-stack/.loader-ready.json", self.loader)
+        self.assertIn("Terraform over SSH after cloud-init reports ready", self.loader)
+        self.assertNotIn("/opt/agent-stack/docker-compose.yml", self.loader)
+        self.assertNotIn("curl -fsSL https://get.docker.com", self.loader)
 
-    def test_mounts_service_data_under_neutral_peer_paths(self) -> None:
-        self.assertIn("/opt/agent-stack/data/openclaw:/home/node/.openclaw", self.template)
-        self.assertIn("/opt/agent-stack/data/hermes:/opt/data", self.template)
-        self.assertIn("/opt/agent-stack/data/n8n:/home/node/.n8n", self.template)
-        self.assertIn("/opt/agent-stack/data/postgres:/var/lib/postgresql/data", self.template)
-        self.assertIn("/opt/agent-stack/data/caddy/data:/data", self.template)
-        self.assertNotIn("/opt/agent-stack/data/services/hermes:/opt/data", self.template)
+    def test_loader_prepares_admin_user_and_private_volume_mount(self) -> None:
+        self.assertIn('admin="${admin_username}"', self.loader)
+        self.assertIn("/etc/sudoers.d/90-agent-stack-admin", self.loader)
+        self.assertIn("/opt/agent-stack/data", self.loader)
+        self.assertIn("mount -o defaults,nofail", self.loader)
+
+    def test_loader_supports_all_provider_volume_paths(self) -> None:
+        self.assertIn('provider_type == "aws"', self.loader)
+        self.assertIn('provider_type == "digitalocean"', self.loader)
+        self.assertIn('provider_type == "hetzner"', self.loader)
+        self.assertIn("/dev/disk/by-id/scsi-0DO_Volume_$volume_name", self.loader)
+        self.assertIn("/dev/disk/by-id/scsi-0HC_Volume_$volume_id", self.loader)
+
+    def test_openclaw_only_compact_template_is_removed(self) -> None:
+        compact_template = TEMPLATE_DIR / "cloud_init_hetzner_openclaw.yaml.tpl"
+        self.assertFalse(compact_template.exists())
+
+
+class RuntimeTemplateTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.compose = (RUNTIME_DIR / "docker-compose.yml.tpl").read_text(encoding="utf-8")
+        cls.caddy = (RUNTIME_DIR / "Caddyfile.template.tpl").read_text(encoding="utf-8")
+        cls.installer = (RUNTIME_DIR / "install-agent-stack.sh.tpl").read_text(encoding="utf-8")
+        cls.agent_stack_service = (RUNTIME_DIR / "agent-stack.service.tpl").read_text(encoding="utf-8")
+        cls.openclaw_service = (RUNTIME_DIR / "openclaw.service.tpl").read_text(encoding="utf-8")
+
+    def test_runtime_includes_stack_services_and_private_ports(self) -> None:
+        self.assertIn("openclaw:", self.compose)
+        self.assertIn("hermes:", self.compose)
+        self.assertIn("n8n:", self.compose)
+        self.assertIn("postgres:", self.compose)
+        self.assertIn("caddy:", self.compose)
+        self.assertIn('"127.0.0.1:18789:18789"', self.compose)
+        self.assertIn('"127.0.0.1:9119:9119"', self.compose)
+        self.assertIn('"127.0.0.1:5678:5678"', self.compose)
+
+    def test_runtime_mounts_service_data_under_neutral_peer_paths(self) -> None:
+        self.assertIn("/opt/agent-stack/data/openclaw:/home/node/.openclaw", self.compose)
+        self.assertIn("/opt/agent-stack/data/hermes:/opt/data", self.compose)
+        self.assertIn("/opt/agent-stack/data/n8n:/home/node/.n8n", self.compose)
+        self.assertIn("/opt/agent-stack/data/postgres:/var/lib/postgresql/data", self.compose)
+        self.assertIn("/opt/agent-stack/data/caddy/data:/data", self.compose)
+        self.assertNotIn("/opt/agent-stack/data/services/hermes:/opt/data", self.compose)
 
     def test_caddy_protects_ui_and_allows_webhooks(self) -> None:
-        self.assertIn("basic_auth", self.template)
-        self.assertIn("__UI_AUTH_HASH__", self.template)
-        self.assertIn("@n8n_webhooks path /webhook* /webhook-test*", self.template)
-
-    def test_hetzner_volume_path_is_supported(self) -> None:
-        self.assertIn("provider_type == \"hetzner\"", self.template)
-        self.assertIn("/dev/disk/by-id/scsi-0HC_Volume_$VOLUME_ID", self.template)
+        self.assertIn("basic_auth", self.caddy)
+        self.assertIn("__UI_AUTH_HASH__", self.caddy)
+        self.assertIn("@n8n_webhooks path /webhook* /webhook-test*", self.caddy)
 
     def test_systemd_uses_agent_stack_with_openclaw_compatibility(self) -> None:
-        self.assertIn("/etc/systemd/system/agent-stack.service", self.template)
-        self.assertIn("/etc/systemd/system/openclaw.service", self.template)
-        self.assertIn("ExecStart=/bin/systemctl start agent-stack.service", self.template)
+        self.assertIn("ExecStart=/usr/bin/docker compose up --remove-orphans", self.agent_stack_service)
+        self.assertIn("ExecStart=/bin/systemctl start agent-stack.service", self.openclaw_service)
 
-    def test_layout_migrator_is_rendered(self) -> None:
-        self.assertIn("/usr/local/bin/agent-stack-migrate-layout", self.template)
-        self.assertIn("Migrating legacy /opt/openclaw/data payload into peer service layout.", self.template)
+    def test_runtime_installer_keeps_openclaw_bootstrap_behavior(self) -> None:
+        self.assertIn("configure_swap", self.installer)
+        self.assertIn("seed_starter_workspace_files", self.installer)
+        self.assertIn("configure_openclaw_channels_and_models", self.installer)
+        self.assertIn("Refreshing gateway token and gateway.controlUi.allowedOrigins", self.installer)
+        self.assertIn(".last-apply.json", self.installer)
+        self.assertIn("restoring previous runtime files", self.installer)
+
+
+class RuntimeProvisioningContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.main_tf = MAIN_TF.read_text(encoding="utf-8")
+
+    def test_terraform_waits_for_cloud_init_and_provisions_as_admin(self) -> None:
+        self.assertIn('resource "terraform_data" "runtime_apply"', self.main_tf)
+        self.assertIn('"sudo cloud-init status --wait"', self.main_tf)
+        self.assertIn("user        = var.admin_username", self.main_tf)
+        self.assertNotIn('user        = "root"', self.main_tf)
+
+    def test_runtime_reapplies_when_artifact_instance_or_volume_changes(self) -> None:
+        self.assertIn("triggers_replace = {", self.main_tf)
+        self.assertIn("artifact_checksum = local.runtime_artifact_checksum", self.main_tf)
+        self.assertIn("instance_id       = local.runtime_instance_id", self.main_tf)
+        self.assertIn("volume_id         = local.runtime_data_volume_id", self.main_tf)
+
+    def test_runtime_uses_private_staging_directory(self) -> None:
+        self.assertIn('runtime_staging_dir = "/opt/agent-stack/.staging-', self.main_tf)
+        self.assertIn("install -d -m 0700", self.main_tf)
+        self.assertIn("chmod 0700 ${local.runtime_staging_dir}", self.main_tf)
 
 
 class LayoutMigratorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.template = TEMPLATE.read_text(encoding="utf-8")
-        cls.script = cls.extract_script(cls.template, "/usr/local/bin/agent-stack-migrate-layout")
-
-    @staticmethod
-    def extract_script(template: str, path: str) -> str:
-        lines = template.splitlines()
-        path_line = f"  - path: {path}"
-        start = lines.index(path_line)
-        content_index = next(index for index in range(start, len(lines)) if lines[index].strip() == "content: |")
-        collected: list[str] = []
-        for line in lines[content_index + 1 :]:
-            if line.startswith("  - path: "):
-                break
-            if line.startswith("      "):
-                collected.append(line[6:])
-            else:
-                collected.append(line)
-        return ("\n".join(collected) + "\n").replace("$${", "${")
+        cls.script = (RUNTIME_DIR / "agent-stack-migrate-layout.sh.tpl").read_text(encoding="utf-8").replace("$${", "${")
 
     def run_migrator(self, data_setup: Callable[[Path], None]) -> Path:
         temp_path = Path(tempfile.mkdtemp())

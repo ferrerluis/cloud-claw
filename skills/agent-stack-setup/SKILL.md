@@ -22,7 +22,7 @@ Core rules:
 - If a cloud resource can be resolved from a human-friendly identifier, such as a DigitalOcean volume name, resolve it with a repo-local helper instead of bouncing the lookup back to them.
 - Treat `anthropic_auth_key` as a legacy fallback, not the normal Anthropic path. Prefer `anthropic_api_key`.
 - If the user wants `openai-codex/*` models, do not ask for a raw refresh token. Ask whether they want to use a local Codex CLI login before inspecting or importing `~/.codex/auth.json`.
-- Before running `skills/agent-stack-setup/scripts/import_codex_auth.py --inspect` or `skills/agent-stack-setup/scripts/import_codex_auth.py`, explain that this reads local Codex auth and writes a base64 auth payload into `terraform.tfvars`, which may later appear in Terraform-managed state or cloud-init data.
+- Before running `skills/agent-stack-setup/scripts/import_codex_auth.py --inspect` or `skills/agent-stack-setup/scripts/import_codex_auth.py`, explain that this reads local Codex auth and writes a base64 auth payload into `terraform.tfvars`, which may later appear in Terraform-managed state or the SSH-provisioned runtime bundle.
 - Never auto-detect, inspect, import, print, or summarize local Codex auth without explicit user consent in that setup conversation.
 - Treat provider migration as a separate guided mode. Do not rewrite `cloud_provider` in the same Terraform state when the user wants to move between AWS, DigitalOcean, and Hetzner.
 

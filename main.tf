@@ -337,6 +337,269 @@ module "hetzner" {
   tailscale_auth_key                   = var.tailscale_auth_key
 }
 
+locals {
+  runtime_instance_id = (
+    var.cloud_provider == "aws"
+    ? one(module.aws[*].instance_id)
+    : (
+      var.cloud_provider == "digitalocean"
+      ? one(module.digitalocean[*].droplet_id)
+      : one(module.hetzner[*].server_id)
+    )
+  )
+
+  runtime_data_volume_id = (
+    var.cloud_provider == "aws"
+    ? one(module.aws[*].ebs_volume_id)
+    : (
+      var.cloud_provider == "digitalocean"
+      ? one(module.digitalocean[*].volume_id)
+      : one(module.hetzner[*].volume_id)
+    )
+  )
+
+  runtime_do_volume_name = var.cloud_provider == "digitalocean" ? one(module.digitalocean[*].volume_name) : ""
+
+  runtime_template_vars = {
+    provider_type                        = var.cloud_provider
+    project_name                         = var.project_name
+    admin_username                       = var.admin_username
+    ebs_volume_id                        = var.cloud_provider == "aws" ? local.runtime_data_volume_id : ""
+    do_volume_name                       = local.runtime_do_volume_name
+    hcloud_volume_id                     = var.cloud_provider == "hetzner" ? local.runtime_data_volume_id : ""
+    anthropic_api_key                    = var.anthropic_api_key
+    anthropic_auth_key                   = var.anthropic_auth_key
+    openai_api_key                       = var.openai_api_key
+    openai_codex_auth_json_base64        = var.openai_codex_auth_json_base64
+    groq_api_key                         = var.groq_api_key
+    gemini_api_key                       = var.gemini_api_key
+    telegram_bot_token                   = var.telegram_bot_token
+    telegram_allow_from_json             = jsonencode(var.telegram_allow_from)
+    openclaw_config_mode                 = var.openclaw_config_mode
+    agent_channel                        = var.agent_channel
+    model_providers_enabled_json         = jsonencode(var.model_providers_enabled)
+    default_model                        = var.default_model
+    fallback_models_json                 = jsonencode(var.fallback_models)
+    tailscale_enabled                    = var.tailscale_enabled
+    tailscale_auth_key                   = var.tailscale_auth_key
+    openclaw_version                     = var.openclaw_version
+    openclaw_node_options                = var.openclaw_node_options
+    openclaw_swap_size_mb                = var.openclaw_swap_size_mb
+    openclaw_health_start_period_seconds = var.openclaw_health_start_period_seconds
+    openclaw_health_retries              = var.openclaw_health_retries
+    seed_starter_workspace_files         = var.seed_starter_workspace_files
+    starter_soul_profile                 = var.starter_soul_profile
+    gateway_token                        = local.resolved_gateway_token
+    enabled_services_json                = jsonencode(var.enabled_services)
+    openclaw_enabled                     = local.openclaw_enabled
+    hermes_enabled                       = local.hermes_enabled
+    n8n_enabled                          = local.n8n_enabled
+    local_postgres_enabled               = local.local_postgres_enabled
+    caddy_enabled                        = var.public_domain_enabled
+    hermes_image                         = var.hermes_image
+    hermes_dashboard_enabled             = var.hermes_dashboard_enabled
+    hermes_api_server_enabled            = var.hermes_api_server_enabled
+    hermes_api_server_key                = local.resolved_hermes_api_server_key
+    n8n_image                            = var.n8n_image
+    n8n_database_mode                    = var.n8n_database_mode
+    n8n_encryption_key                   = local.resolved_n8n_encryption_key
+    n8n_public_webhooks_enabled          = var.n8n_public_webhooks_enabled
+    n8n_generic_timezone                 = var.n8n_generic_timezone
+    postgres_image                       = var.postgres_image
+    postgres_database                    = var.postgres_database
+    postgres_user                        = var.postgres_user
+    postgres_password                    = local.resolved_postgres_password
+    n8n_postgres_host                    = local.resolved_n8n_postgres_host
+    n8n_postgres_port                    = local.resolved_n8n_postgres_port
+    n8n_postgres_database                = local.resolved_n8n_postgres_database
+    n8n_postgres_user                    = local.resolved_n8n_postgres_user
+    n8n_postgres_password                = local.resolved_n8n_postgres_password
+    n8n_postgres_ssl_enabled             = local.resolved_n8n_postgres_ssl
+    public_domain_enabled                = var.public_domain_enabled
+    openclaw_domain                      = local.resolved_openclaw_domain
+    hermes_domain                        = local.resolved_hermes_domain
+    n8n_domain                           = local.resolved_n8n_domain
+    acme_email                           = var.acme_email
+    ui_auth_mode                         = var.ui_auth_mode
+    ui_auth_username                     = var.ui_auth_username
+    ui_auth_password                     = local.resolved_ui_auth_password
+  }
+
+  runtime_docker_compose      = templatefile("${path.module}/modules/common/templates/runtime/docker-compose.yml.tpl", local.runtime_template_vars)
+  runtime_env                 = templatefile("${path.module}/modules/common/templates/runtime/env.tpl", local.runtime_template_vars)
+  runtime_caddyfile_template  = templatefile("${path.module}/modules/common/templates/runtime/Caddyfile.template.tpl", local.runtime_template_vars)
+  runtime_tailscale_bootstrap = templatefile("${path.module}/modules/common/templates/runtime/tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
+  runtime_layout_migrator     = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-migrate-layout.sh.tpl", local.runtime_template_vars)
+  runtime_mount_volume        = templatefile("${path.module}/modules/common/templates/runtime/mount-agent-stack-volume.sh.tpl", local.runtime_template_vars)
+  runtime_installer           = templatefile("${path.module}/modules/common/templates/runtime/install-agent-stack.sh.tpl", local.runtime_template_vars)
+  runtime_agent_stack_service = templatefile("${path.module}/modules/common/templates/runtime/agent-stack.service.tpl", local.runtime_template_vars)
+  runtime_openclaw_service    = templatefile("${path.module}/modules/common/templates/runtime/openclaw.service.tpl", local.runtime_template_vars)
+  runtime_watchdog            = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.sh.tpl", local.runtime_template_vars)
+  runtime_watchdog_service    = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.service.tpl", local.runtime_template_vars)
+  runtime_watchdog_timer      = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.timer.tpl", local.runtime_template_vars)
+  runtime_enabled_services    = jsonencode(var.enabled_services)
+  runtime_starter_soul        = file("${path.module}/modules/common/templates/starter/SOUL.${var.starter_soul_profile}.md")
+  runtime_starter_agents      = file("${path.module}/modules/common/templates/starter/AGENTS.default.md")
+  runtime_starter_tools       = file("${path.module}/modules/common/templates/starter/TOOLS.default.md")
+  runtime_starter_user        = file("${path.module}/modules/common/templates/starter/USER.default.md")
+  runtime_artifact_checksum = nonsensitive(sha256(join("\n---agent-stack-artifact---\n", [
+    nonsensitive(local.runtime_docker_compose),
+    nonsensitive(local.runtime_env),
+    nonsensitive(local.runtime_caddyfile_template),
+    nonsensitive(local.runtime_tailscale_bootstrap),
+    nonsensitive(local.runtime_layout_migrator),
+    nonsensitive(local.runtime_mount_volume),
+    nonsensitive(local.runtime_installer),
+    nonsensitive(local.runtime_agent_stack_service),
+    nonsensitive(local.runtime_openclaw_service),
+    nonsensitive(local.runtime_watchdog),
+    nonsensitive(local.runtime_watchdog_service),
+    nonsensitive(local.runtime_watchdog_timer),
+    nonsensitive(local.runtime_enabled_services),
+    nonsensitive(local.runtime_starter_soul),
+    nonsensitive(local.runtime_starter_agents),
+    nonsensitive(local.runtime_starter_tools),
+    nonsensitive(local.runtime_starter_user),
+    nonsensitive(var.openai_codex_auth_json_base64),
+  ])))
+  runtime_staging_dir = "/opt/agent-stack/.staging-${substr(local.runtime_artifact_checksum, 0, 16)}"
+}
+
+resource "terraform_data" "runtime_apply" {
+  input = local.runtime_artifact_checksum
+
+  triggers_replace = {
+    artifact_checksum = local.runtime_artifact_checksum
+    instance_id       = local.runtime_instance_id
+    volume_id         = local.runtime_data_volume_id
+  }
+
+  depends_on = [
+    module.aws,
+    module.digitalocean,
+    module.hetzner,
+  ]
+
+  connection {
+    type        = "ssh"
+    host        = local.instance_public_ip
+    user        = var.admin_username
+    private_key = file("${path.root}/${var.repo_ssh_private_key_path}")
+    timeout     = "15m"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "sudo cloud-init status --wait",
+      "sudo -n true",
+      "sudo test -f /opt/agent-stack/.loader-ready.json",
+      "sudo test -d /opt/agent-stack/data",
+      "group=$(id -gn ${var.admin_username}); sudo install -d -m 0755 /opt/agent-stack; sudo install -d -m 0700 -o ${var.admin_username} -g $group ${local.runtime_staging_dir}",
+      "sudo find ${local.runtime_staging_dir} -mindepth 1 -maxdepth 1 -exec rm -rf {} +",
+      "install -d -m 0700 ${local.runtime_staging_dir}/templates",
+    ]
+  }
+
+  provisioner "file" {
+    content     = local.runtime_docker_compose
+    destination = "${local.runtime_staging_dir}/docker-compose.yml"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_env
+    destination = "${local.runtime_staging_dir}/.env"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_caddyfile_template
+    destination = "${local.runtime_staging_dir}/Caddyfile.template"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_tailscale_bootstrap
+    destination = "${local.runtime_staging_dir}/tailscale-bootstrap.sh"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_layout_migrator
+    destination = "${local.runtime_staging_dir}/agent-stack-migrate-layout"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_mount_volume
+    destination = "${local.runtime_staging_dir}/mount-agent-stack-volume.sh"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_installer
+    destination = "${local.runtime_staging_dir}/install-agent-stack.sh"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_agent_stack_service
+    destination = "${local.runtime_staging_dir}/agent-stack.service"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_openclaw_service
+    destination = "${local.runtime_staging_dir}/openclaw.service"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_watchdog
+    destination = "${local.runtime_staging_dir}/agent-stack-tailscale-watchdog"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_watchdog_service
+    destination = "${local.runtime_staging_dir}/agent-stack-tailscale-watchdog.service"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_watchdog_timer
+    destination = "${local.runtime_staging_dir}/agent-stack-tailscale-watchdog.timer"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_enabled_services
+    destination = "${local.runtime_staging_dir}/enabled-services.json"
+  }
+
+  provisioner "file" {
+    content     = var.openai_codex_auth_json_base64
+    destination = "${local.runtime_staging_dir}/openai_codex_auth_json_base64"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_starter_soul
+    destination = "${local.runtime_staging_dir}/templates/SOUL.${var.starter_soul_profile}.md"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_starter_agents
+    destination = "${local.runtime_staging_dir}/templates/AGENTS.default.md"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_starter_tools
+    destination = "${local.runtime_staging_dir}/templates/TOOLS.default.md"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_starter_user
+    destination = "${local.runtime_staging_dir}/templates/USER.default.md"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod 0700 ${local.runtime_staging_dir}",
+      "chmod 0600 ${local.runtime_staging_dir}/.env ${local.runtime_staging_dir}/openai_codex_auth_json_base64",
+      "chmod 0755 ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir}/agent-stack-migrate-layout ${local.runtime_staging_dir}/mount-agent-stack-volume.sh ${local.runtime_staging_dir}/tailscale-bootstrap.sh ${local.runtime_staging_dir}/agent-stack-tailscale-watchdog",
+      "sudo bash ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir} ${local.runtime_artifact_checksum}",
+    ]
+  }
+}
+
 resource "local_file" "repo_ssh_config" {
   count = var.generate_repo_ssh_config ? 1 : 0
 

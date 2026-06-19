@@ -251,9 +251,7 @@ resource "aws_instance" "this" {
   key_name               = aws_key_pair.this.key_name
   availability_zone      = local.az
 
-  # user_data includes rendered cloud-init which embeds the EBS volume ID
-  user_data                   = local.cloud_init
-  user_data_replace_on_change = true
+  user_data = local.cloud_init
 
   root_block_device {
     volume_type           = "gp3"
@@ -271,6 +269,10 @@ resource "aws_instance" "this" {
   tags = {
     Name    = "${var.project_name}"
     Project = var.project_name
+  }
+
+  lifecycle {
+    ignore_changes = [user_data]
   }
 }
 

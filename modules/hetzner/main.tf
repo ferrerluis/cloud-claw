@@ -13,7 +13,7 @@ locals {
     : one(hcloud_volume.this[*].id)
   )
 
-  cloud_init = templatefile("${path.module}/../common/templates/cloud_init.yaml.tpl", {
+  cloud_init_vars = {
     provider_type                        = "hetzner"
     project_name                         = var.project_name
     admin_username                       = var.admin_username
@@ -83,7 +83,9 @@ locals {
     ui_auth_mode                         = var.ui_auth_mode
     ui_auth_username                     = var.ui_auth_username
     ui_auth_password                     = var.ui_auth_password
-  })
+  }
+
+  cloud_init = templatefile("${path.module}/../common/templates/cloud_init.yaml.tpl", local.cloud_init_vars)
 }
 
 resource "hcloud_ssh_key" "this" {
@@ -145,6 +147,10 @@ resource "hcloud_server" "this" {
 
   labels = {
     project = var.project_name
+  }
+
+  lifecycle {
+    ignore_changes = [user_data]
   }
 }
 

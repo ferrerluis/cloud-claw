@@ -154,6 +154,10 @@ resource "digitalocean_droplet" "this" {
   depends_on = [digitalocean_volume.this]
 
   tags = [var.project_name]
+
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

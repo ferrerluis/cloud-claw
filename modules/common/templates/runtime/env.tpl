@@ -1,0 +1,49 @@
+ANTHROPIC_API_KEY=${anthropic_api_key}
+ANTHROPIC_AUTH_KEY=${anthropic_auth_key}
+OPENAI_API_KEY=${openai_api_key}
+GROQ_API_KEY=${groq_api_key}
+GEMINI_API_KEY=${gemini_api_key}
+TELEGRAM_BOT_TOKEN=${telegram_bot_token}
+OPENCLAW_GATEWAY_TOKEN=${gateway_token}
+OPENCLAW_ENABLED=${openclaw_enabled}
+HERMES_ENABLED=${hermes_enabled}
+N8N_ENABLED=${n8n_enabled}
+LOCAL_POSTGRES_ENABLED=${local_postgres_enabled}
+CADDY_ENABLED=${caddy_enabled}
+NODE_OPTIONS=${openclaw_node_options}
+%{ if tailscale_enabled }
+OPENCLAW_GATEWAY_BIND=loopback
+TAILSCALE_AUTH_KEY=${tailscale_auth_key}
+TAILSCALE_HOSTNAME=${project_name}
+%{ else }
+OPENCLAW_GATEWAY_BIND=lan
+%{ endif }
+HERMES_DASHBOARD=${hermes_dashboard_enabled ? "1" : "0"}
+HERMES_DASHBOARD_HOST=0.0.0.0
+HERMES_DASHBOARD_PORT=9119
+API_SERVER_ENABLED=${hermes_api_server_enabled}
+API_SERVER_HOST=0.0.0.0
+API_SERVER_KEY=${hermes_api_server_key}
+API_SERVER_CORS_ORIGINS=*
+N8N_ENCRYPTION_KEY=${n8n_encryption_key}
+GENERIC_TIMEZONE=${n8n_generic_timezone}
+DB_TYPE=postgresdb
+DB_POSTGRESDB_HOST=${n8n_postgres_host}
+DB_POSTGRESDB_PORT=${n8n_postgres_port}
+DB_POSTGRESDB_DATABASE=${n8n_postgres_database}
+DB_POSTGRESDB_USER=${n8n_postgres_user}
+DB_POSTGRESDB_PASSWORD=${n8n_postgres_password}
+DB_POSTGRESDB_SSL_ENABLED=${n8n_postgres_ssl_enabled}
+POSTGRES_DB=${postgres_database}
+POSTGRES_USER=${postgres_user}
+POSTGRES_PASSWORD=${postgres_password}
+%{ if caddy_enabled && n8n_domain != "" }
+N8N_HOST=${n8n_domain}
+N8N_PORT=5678
+N8N_PROTOCOL=https
+WEBHOOK_URL=https://${n8n_domain}/
+N8N_EDITOR_BASE_URL=https://${n8n_domain}/
+N8N_PROXY_HOPS=1
+%{ endif }
+UI_AUTH_USERNAME=${ui_auth_username}
+UI_AUTH_PASSWORD=${ui_auth_password}

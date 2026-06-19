@@ -63,7 +63,7 @@ Default DigitalOcean profile:
 Default Hetzner profile:
 
 - `hcloud_location = "ash"`
-- `hcloud_server_type = "cx32"`
+- `hcloud_server_type = "cpx21"`
 - `hcloud_image = "ubuntu-22.04"`
 - `hcloud_disk_size_gb = 50`
 

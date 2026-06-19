@@ -65,8 +65,13 @@ done
 [[ -n "$SOURCE" ]] || fail "--source is required"
 [[ -n "$TARGET" ]] || fail "--target is required"
 
-source_ssh=(ssh -o IdentitiesOnly=yes -o ConnectTimeout=10)
-target_ssh=(ssh -o IdentitiesOnly=yes -o ConnectTimeout=10)
+known_hosts="${AGENT_STACK_MIGRATION_KNOWN_HOSTS:-}"
+source_ssh=(ssh -o IdentitiesOnly=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
+target_ssh=(ssh -o IdentitiesOnly=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
+if [[ -n "$known_hosts" ]]; then
+  source_ssh+=(-o "UserKnownHostsFile=$known_hosts")
+  target_ssh+=(-o "UserKnownHostsFile=$known_hosts")
+fi
 if [[ -n "$SOURCE_KEY" ]]; then
   source_ssh+=(-i "$SOURCE_KEY")
 fi
@@ -77,11 +82,15 @@ source_ssh+=("$SOURCE")
 target_ssh+=("$TARGET")
 
 run_source() {
-  "${source_ssh[@]}" sudo bash -lc "$1"
+  local quoted
+  printf -v quoted '%q' "$1"
+  "${source_ssh[@]}" "sudo bash -lc $quoted"
 }
 
 run_target() {
-  "${target_ssh[@]}" sudo bash -lc "$1"
+  local quoted
+  printf -v quoted '%q' "$1"
+  "${target_ssh[@]}" "sudo bash -lc $quoted"
 }
 
 detect_source_root() {
@@ -92,9 +101,9 @@ detect_source_root() {
 stop_stack() {
   local side="$1"
   if [[ "$side" == "source" ]]; then
-    run_source 'systemctl stop agent-stack 2>/dev/null || systemctl stop openclaw 2>/dev/null || true'
+    run_source 'systemctl stop agent-stack 2>/dev/null || true; systemctl stop openclaw 2>/dev/null || true'
   else
-    run_target 'systemctl stop agent-stack 2>/dev/null || systemctl stop openclaw 2>/dev/null || true'
+    run_target 'systemctl stop agent-stack 2>/dev/null || true; systemctl stop openclaw 2>/dev/null || true'
   fi
 }
 

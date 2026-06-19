@@ -110,7 +110,7 @@ class RenderTfvarsTest(unittest.TestCase):
         )
         self.assertIn('cloud_provider = "hetzner"', rendered)
         self.assertIn('hcloud_token = "real-hcloud-token"', rendered)
-        self.assertIn('hcloud_server_type = "cx32"', rendered)
+        self.assertIn('hcloud_server_type = "cpx21"', rendered)
 
     def test_renders_existing_volume_fixture(self) -> None:
         _, rendered = run_render(

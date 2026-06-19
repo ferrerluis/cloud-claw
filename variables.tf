@@ -148,9 +148,9 @@ variable "hcloud_location" {
 }
 
 variable "hcloud_server_type" {
-  description = "Hetzner Cloud server type. Default cx32 is sized for the full AgentStack profile."
+  description = "Hetzner Cloud server type. Default cpx21 is sized for the full AgentStack profile."
   type        = string
-  default     = "cx32"
+  default     = "cpx21"
 }
 
 variable "hcloud_image" {

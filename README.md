@@ -10,7 +10,7 @@
 
 | Component | AWS | DigitalOcean | Hetzner Cloud |
 |-----------|-----|--------------|---------------|
-| Compute | EC2 t3.small (1 vCPU / 2 GB) | Droplet s-2vcpu-2gb (2 vCPU / 2 GB / 60 GB root disk) | cx32 (default, sized for full stack) |
+| Compute | EC2 t3.small (1 vCPU / 2 GB) | Droplet s-2vcpu-2gb (2 vCPU / 2 GB / 60 GB root disk) | cpx21 (default, sized for full stack) |
 | Persistent storage | 50 GB gp3 EBS volume | 20 GB Block Storage volume | 50 GB Cloud volume |
 | Networking | VPC, subnet, IGW, route table | VPC | Public server network |
 | Firewall | Security Group: SSH + Tailscale UDP, optional 80/443 | Firewall: SSH + Tailscale UDP, optional 80/443 | Firewall: SSH + Tailscale UDP, optional 80/443 |
@@ -20,27 +20,27 @@ All sizes are defaults and are adjustable through variables.
 
 ## How it bootstraps
 
-On first boot, `cloud-init` runs a script that:
+Bootstrap is intentionally split into two provider-neutral phases:
 
-1. Installs Docker and Docker Compose
-2. Locates, formats (first time), and mounts the persistent data volume
-3. Writes `/opt/agent-stack/docker-compose.yml` and `/opt/agent-stack/.env`
-4. Creates and starts a `systemd` service (`agent-stack`) that runs the selected stack with Docker Compose, with `openclaw.service` kept as a compatibility wrapper
-5. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` for OpenClaw over HTTPS on your tailnet
-6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste
-7. Applies `openclaw_config_mode`:
+1. `cloud-init` runs a small first-boot loader on AWS, DigitalOcean, and Hetzner. It creates the `admin` user, installs the SSH key, waits for and mounts the persistent data volume at `/opt/agent-stack/data`, and writes `/opt/agent-stack/.loader-ready.json`.
+2. Terraform waits for `cloud-init status --wait`, connects over SSH as `admin`, uploads the rendered runtime bundle into a private `/opt/agent-stack/.staging-*` directory, and runs the shared installer with `sudo`.
+3. The installer writes `/opt/agent-stack/docker-compose.yml` and `/opt/agent-stack/.env`, installs Docker when needed, validates the Compose config, and creates the `agent-stack` systemd service. `openclaw.service` remains as a compatibility wrapper.
+4. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` for OpenClaw over HTTPS on your tailnet.
+5. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste.
+6. Applies `openclaw_config_mode`:
    - `auto` (default): preserve an existing `openclaw.json`, manage fresh installs
    - `manage`: always apply starter channel/model bootstrap changes
    - `preserve`: skip optional channel/model bootstrap changes
-8. After OpenClaw first-run initialization, seeds starter workspace files (create-if-missing) in `/home/node/.openclaw/workspace`: `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `USER.md`
-9. Installs/enables only the selected `agent_channel` plugin (`telegram` or `whatsapp`)
-10. If `agent_channel = "telegram"` and `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
+7. After OpenClaw first-run initialization, seeds starter workspace files (create-if-missing) in `/home/node/.openclaw/workspace`: `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `USER.md`
+8. Installs/enables only the selected `agent_channel` plugin (`telegram` or `whatsapp`)
+9. If `agent_channel = "telegram"` and `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
    - If `telegram_allow_from` is non-empty, writes `channels.telegram.allowFrom` with those pre-approved user IDs
-11. Registers `ANTHROPIC_AUTH_KEY` only when the `anthropic` provider is selected
-12. Configures only user-selected model routing:
+10. Registers `ANTHROPIC_AUTH_KEY` only when the `anthropic` provider is selected
+11. Configures only user-selected model routing:
     - required `default_model`
     - ordered `fallback_models`
     - restricted to explicitly selected `model_providers_enabled`
+12. Writes `/opt/agent-stack/.last-apply.json` with the runtime artifact checksum and selected services after a successful installer run.
 
 OpenClaw, Hermes, n8n, and Postgres run as Docker containers. UI ports bind to `127.0.0.1` by default. If `public_domain_enabled = true`, Caddy opens 80/443, terminates HTTPS, and protects UI routes with basic auth. n8n webhook paths can remain public when `n8n_public_webhooks_enabled = true`.
 
@@ -84,7 +84,8 @@ terraform apply
 # - else it uses/creates ./.ssh/id_ed25519_agent_stack(.pub)
 # Terraform also writes ./.ssh/config (disable with generate_repo_ssh_config = false)
 
-# 6. Watch bootstrap (takes ~2-3 min)
+# 6. Watch bootstrap/provisioning (takes ~2-3 min)
+# Terraform waits for cloud-init and then runs the runtime installer over SSH.
 # The SSH command and log tail command are shown in the outputs.
 ```
 
@@ -171,7 +172,7 @@ aws_disk_size_gb  = 50
 aws_existing_volume_id = "vol-0abc123def456789"
 ```
 
-The bootstrap script will detect the volume by its NVMe serial number, skip formatting, and mount it at `/opt/agent-stack/data`.
+The loader/installer will detect the volume by its NVMe serial number, skip formatting, and mount it at `/opt/agent-stack/data`.
 
 ---
 
@@ -209,7 +210,7 @@ SSH user defaults to `admin` (customizable with `admin_username`).
 cloud_provider       = "hetzner"
 hcloud_token         = "..."
 hcloud_location      = "ash"
-hcloud_server_type   = "cx32"
+hcloud_server_type   = "cpx21"
 hcloud_disk_size_gb  = 50
 ```
 
@@ -219,7 +220,7 @@ hcloud_disk_size_gb  = 50
 hcloud_existing_volume_id = "12345678"
 ```
 
-The bootstrap script detects the volume through `/dev/disk/by-id/scsi-0HC_Volume_<id>` and mounts it at `/opt/agent-stack/data`.
+The loader/installer detects the volume through `/dev/disk/by-id/scsi-0HC_Volume_<id>` and mounts it at `/opt/agent-stack/data`.
 
 ---
 
@@ -310,7 +311,7 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 | `do_existing_volume_name` | `""` | Name of existing DO volume |
 | `hcloud_token` | `""` | Hetzner Cloud API token |
 | `hcloud_location` | `"ash"` | Hetzner Cloud location |
-| `hcloud_server_type` | `"cx32"` | Hetzner server type |
+| `hcloud_server_type` | `"cpx21"` | Hetzner server type |
 | `hcloud_image` | `"ubuntu-22.04"` | Hetzner image slug |
 | `hcloud_disk_size_gb` | `50` | Hetzner Cloud volume size |
 | `hcloud_existing_volume_id` | `""` | Reuse existing Hetzner Cloud volume |
@@ -402,7 +403,7 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 - The Tailscale sidecar requires `/dev/net/tun` and `NET_ADMIN` / `NET_RAW` capabilities.
 - Only SSH (port 22) and Tailscale UDP (41641) are opened in firewall rules by default. Ports 80/443 open only when public domains are enabled.
 - `gateway_token` and `dashboard_url_with_token_import` outputs contain credentials. Treat Terraform output/state as sensitive.
-- **API keys** are injected into user_data / cloud-init. On AWS, user_data is accessible via the instance metadata API (IMDSv2 only, 1-hop limit enforced). For stricter security, use AWS Secrets Manager and fetch keys at boot instead.
+- **API keys** are rendered by Terraform into the runtime bundle and uploaded over SSH into a private `/opt/agent-stack/.staging-*` directory before being installed as `/opt/agent-stack/.env`. They are still present in Terraform state and local plan/apply material, so treat state files and plans as sensitive.
 - **SSH CIDR**: set `allowed_ssh_cidr` to your own IP (`curl ifconfig.me`) — don't leave it `0.0.0.0/0` in production.
 - **EBS encryption** is enabled on both the root and data volumes.
 - **IMDSv2** is enforced on EC2 (HTTP tokens required, 1-hop limit).
@@ -440,7 +441,8 @@ agent-stack/
     │   └── outputs.tf
     └── common/
         └── templates/
-            ├── cloud_init.yaml.tpl     # Shared bootstrap (Docker, Tailscale, OpenClaw)
+            ├── cloud_init.yaml.tpl     # Shared first-boot loader (admin user + volume mount)
+            ├── runtime/                # Shared SSH-provisioned runtime bundle
             └── starter/                # Starter workspace file templates
 ```
 
@@ -483,7 +485,7 @@ hcloud volume create-snapshot <volume-id> --description "agent-stack-$(date +%Y%
 
 ## Google Drive sync (optional)
 
-The `docker-compose.yml` written by cloud-init includes a commented-out `rclone` service. To activate it:
+The installed `docker-compose.yml` includes a commented-out `rclone` service. To activate it:
 
 1. On the server, run `rclone config` and follow the [Google Drive setup guide](https://rclone.org/drive/).
 2. This creates `~root/.config/rclone/rclone.conf`.
