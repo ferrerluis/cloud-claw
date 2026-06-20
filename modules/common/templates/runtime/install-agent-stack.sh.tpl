@@ -98,6 +98,24 @@ configure_caddyfile() {
   chmod 0600 "$staging/Caddyfile"
 }
 
+install_openclaw_runtime_patches() {
+  install -d -m 0755 "$app/patches/openclaw"
+
+  case "${openclaw_version}" in
+    2026.6.8|2026.6.9-beta.1)
+      cat > "$app/patches/openclaw/telegram-ingress-worker.runtime.js" <<'PATCH'
+import "/app/dist/telegram-ingress-worker.runtime.js";
+PATCH
+      chmod 0644 "$app/patches/openclaw/telegram-ingress-worker.runtime.js"
+      echo "[patches] Installed OpenClaw Telegram ingress worker shim for ${openclaw_version}."
+      ;;
+    *)
+      rm -f "$app/patches/openclaw/telegram-ingress-worker.runtime.js"
+      echo "[patches] No OpenClaw runtime compatibility patches for ${openclaw_version}."
+      ;;
+  esac
+}
+
 sync_openai_codex_auth() {
   if [ ! -s "$staging/openai_codex_auth_json_base64" ]; then
     echo "[openai-codex] No Codex CLI auth import configured."
@@ -111,8 +129,29 @@ sync_openai_codex_auth() {
   chmod 0600 "$app/codex/auth.json"
 }
 
+wait_agent_stack_initial_restart() {
+  for attempt in $(seq 1 60); do
+    if systemctl is-active --quiet agent-stack; then
+      local container_id
+      container_id="$(docker compose -f "$app/docker-compose.yml" ps -q openclaw 2>/dev/null || true)"
+      if [ -z "$container_id" ]; then
+        return 0
+      fi
+
+      local health_status
+      health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || true)"
+      if [ "$health_status" = "healthy" ] || [ "$health_status" = "running" ]; then
+        return 0
+      fi
+    fi
+    sleep 3
+  done
+  return 1
+}
+
 configure_caddyfile
 configure_swap
+install_openclaw_runtime_patches
 docker compose --env-file "$staging/.env" -f "$staging/docker-compose.yml" config >/dev/null
 
 rm -rf "$previous"
@@ -155,8 +194,13 @@ else
   systemctl disable --now agent-stack-tailscale-watchdog.timer 2>/dev/null || true
 fi
 
-if ! systemctl restart agent-stack; then
-  echo "[runtime] restart failed; restoring previous runtime files" >&2
+restart_status=0
+systemctl restart agent-stack || restart_status=$?
+if [ "$restart_status" -ne 0 ]; then
+  echo "[runtime] WARNING: systemctl restart agent-stack exited $restart_status; waiting for service recovery before deciding failure." >&2
+fi
+if ! wait_agent_stack_initial_restart; then
+  echo "[runtime] restart did not recover; restoring previous runtime files" >&2
   for path in docker-compose.yml .env Caddyfile tailscale-bootstrap.sh; do
     if [ -e "$previous/$path" ]; then
       cp -a "$previous/$path" "$app/$path"
@@ -193,6 +237,7 @@ case "$OPENCLAW_CONFIG_MODE_INPUT" in
 esac
 AGENT_CHANNEL="${agent_channel}"
 MODEL_PROVIDERS_ENABLED_JSON='${model_providers_enabled_json}'
+OPENAI_AUTH_MODE='${openai_auth_mode}'
 DEFAULT_MODEL_REF='${default_model}'
 FALLBACK_MODELS_JSON='${fallback_models_json}'
 TELEGRAM_ALLOW_FROM_JSON='${telegram_allow_from_json}'
@@ -201,6 +246,7 @@ SHOULD_SEED_STARTER_FILES='${seed_starter_workspace_files}'
 
 echo "[config] openclaw_config_mode=$OPENCLAW_CONFIG_MODE_INPUT effective=$OPENCLAW_CONFIG_MODE_EFFECTIVE preexisting_config=$PREEXISTING_OPENCLAW_CONFIG"
 echo "[config] agent_channel=$AGENT_CHANNEL starter_soul_profile=$STARTER_SOUL_PROFILE"
+echo "[config] openai_auth_mode=$OPENAI_AUTH_MODE"
 
 wait_openclaw_healthy() {
   if [ "$OPENCLAW_ENABLED" != "true" ]; then
@@ -324,7 +370,11 @@ model_route_has_credentials() {
       has_env_key ANTHROPIC_API_KEY || has_env_key ANTHROPIC_AUTH_KEY
       ;;
     openai)
-      has_env_key OPENAI_API_KEY
+      if [ "$OPENAI_AUTH_MODE" = "codex" ]; then
+        [ -s "$app/codex/auth.json" ]
+      else
+        has_env_key OPENAI_API_KEY
+      fi
       ;;
     openai-codex)
       [ -s "$app/codex/auth.json" ]
@@ -366,6 +416,77 @@ model_is_usable() {
     return 1
   fi
   return 0
+}
+
+openai_codex_runtime_enabled() {
+  [ "$OPENAI_AUTH_MODE" = "codex" ]
+}
+
+configured_openai_codex_models_json() {
+  jq -nc \
+    --arg default_model "$DEFAULT_MODEL_REF" \
+    --argjson fallback_models "$FALLBACK_MODELS_JSON" \
+    '([$default_model] + $fallback_models) | map(select(startswith("openai/"))) | unique'
+}
+
+configure_openai_codex_runtime_routes() {
+  if ! openai_codex_runtime_enabled; then
+    return 0
+  fi
+  if ! wait_for_openclaw_config; then
+    echo "[openai] WARNING: $OPENCLAW_CONFIG not found; skipped Codex runtime routing."
+    return 1
+  fi
+
+  local codex_models_json
+  codex_models_json="$(configured_openai_codex_models_json)"
+  if [ "$(printf '%s' "$codex_models_json" | jq 'length')" -eq 0 ]; then
+    echo "[openai] No canonical openai/* models selected for Codex runtime routing."
+    return 0
+  fi
+
+  local tmp_config
+  tmp_config="$(mktemp)"
+  if jq --argjson codex_models "$codex_models_json" '
+    def set_agent_runtime:
+      (.model // "") as $model
+      | if (($codex_models | index($model)) != null) then
+          .models = (.models // {})
+          | .models[$model].agentRuntime.id = "codex"
+        else
+          .
+        end;
+    def walk_agents:
+      if type == "object" then
+        with_entries(.value |= walk_agents) | set_agent_runtime
+      elif type == "array" then
+        map(walk_agents)
+      else
+        .
+      end;
+
+    .agents = (.agents // {})
+    | .agents.defaults = (.agents.defaults // {})
+    | .agents.defaults.models = (.agents.defaults.models // {})
+    | reduce $codex_models[] as $model (.;
+        .agents.defaults.models[$model].agentRuntime.id = "codex"
+      )
+    | .agents |= walk_agents
+  ' "$OPENCLAW_CONFIG" > "$tmp_config"; then
+    if ! cmp -s "$tmp_config" "$OPENCLAW_CONFIG"; then
+      mv "$tmp_config" "$OPENCLAW_CONFIG"
+      chown 1000:1000 "$OPENCLAW_CONFIG" || true
+      echo "[openai] Codex runtime routing configured for openai/* models: $(printf '%s' "$codex_models_json" | jq -r 'join(", ")')"
+      mark_openclaw_restart_needed
+    else
+      rm -f "$tmp_config"
+      echo "[openai] Codex runtime routing already up to date."
+    fi
+  else
+    rm -f "$tmp_config"
+    echo "[openai] WARNING: Failed to configure Codex runtime routing."
+    return 1
+  fi
 }
 
 ensure_plugin_enabled() {
@@ -507,6 +628,7 @@ configure_openclaw_channels_and_models() {
             fi
           fi
         done < <(printf '%s' "$FALLBACK_MODELS_JSON" | jq -r '.[]')
+        configure_openai_codex_runtime_routes || true
       else
         echo "[models] WARNING: Failed to set default model: $DEFAULT_MODEL_REF"
         tail -n 5 /tmp/openclaw-models-set.log || true

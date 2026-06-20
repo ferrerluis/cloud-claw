@@ -356,8 +356,15 @@ def build_values(specs: list[VariableSpec], answers: dict[str, Any]) -> dict[str
         str(resolved["anthropic_api_key"]).strip() or str(resolved["anthropic_auth_key"]).strip()
     ):
         fail("anthropic_api_key is required when any configured model uses anthropic/*")
-    if uses_model_route(resolved, "openai") and not str(resolved["openai_api_key"]).strip():
-        fail("openai_api_key is required when any configured model uses openai/*")
+    if uses_model_route(resolved, "openai"):
+        if resolved["openai_auth_mode"] == "codex":
+            if not str(resolved["openai_codex_auth_json_base64"]).strip():
+                fail(
+                    "openai_codex_auth_json_base64 is required when openai_auth_mode = codex "
+                    "and any configured model uses openai/*; run `codex login` and import ~/.codex/auth.json first"
+                )
+        elif not str(resolved["openai_api_key"]).strip():
+            fail("openai_api_key is required when openai_auth_mode = api_key and any configured model uses openai/*")
     if uses_model_route(resolved, "openai-codex") and not str(resolved["openai_codex_auth_json_base64"]).strip():
         fail(
             "openai_codex_auth_json_base64 is required when any configured model uses "

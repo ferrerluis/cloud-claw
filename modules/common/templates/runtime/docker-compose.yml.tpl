@@ -9,6 +9,9 @@ services:
       - "127.0.0.1:18793:18793"
     volumes:
       - /opt/agent-stack/data/openclaw:/home/node/.openclaw
+%{ if openclaw_version == "2026.6.8" || openclaw_version == "2026.6.9-beta.1" }
+      - /opt/agent-stack/patches/openclaw/telegram-ingress-worker.runtime.js:/app/extensions/telegram/src/telegram-ingress-worker.runtime.js:ro
+%{ endif }
 %{ if openai_codex_auth_json_base64 != "" }
       - /opt/agent-stack/codex:/home/node/.codex
 %{ endif }

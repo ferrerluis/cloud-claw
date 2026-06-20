@@ -90,6 +90,7 @@ class TerraformContractTest(unittest.TestCase):
             '".ssh/id_ed25519_agent_stack"',
         )
         self.assertEqual(variable_default(self.variables_tf, "openclaw_health_retries"), "8")
+        self.assertEqual(variable_default(self.variables_tf, "openai_auth_mode"), '"api_key"')
         self.assertEqual(variable_default(self.variables_tf, "postgres_image"), '"postgres:17-alpine"')
 
 

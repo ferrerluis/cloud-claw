@@ -53,7 +53,7 @@ OpenClaw, Hermes, n8n, and Postgres run as Docker containers. UI ports bind to `
 | Terraform ≥ 1.5 | [Install](https://developer.hashicorp.com/terraform/install) |
 | SSH key pair | Optional; if omitted, Terraform auto-creates a repo-local keypair in `./.ssh` |
 | Cloud credentials | AWS access key + secret, DigitalOcean API token, **or** Hetzner Cloud API token |
-| LLM API key(s) | At least one of: Anthropic, OpenAI, Groq, or Gemini |
+| LLM credentials | At least one model provider credential: Anthropic/OpenAI/Groq/Gemini API key, or imported Codex auth for subscription-backed OpenAI |
 | Tailscale account (recommended) | [Sign up free](https://tailscale.com/) — generate an auth key |
 
 ---
@@ -112,6 +112,30 @@ repo_bootstrap_log_command = "./bin/agent-stack-ssh -- tail -f /var/log/openclaw
 ```
 
 Run `bootstrap_log_command` to watch the install progress in real time.
+
+## OpenAI Auth Modes
+
+For direct OpenAI Platform billing, use API-key mode with canonical `openai/*` model refs:
+
+```hcl
+model_providers_enabled = ["openai"]
+openai_auth_mode        = "api_key"
+openai_api_key          = "sk-..."
+default_model           = "openai/gpt-5.4"
+fallback_models         = ["openai/gpt-5.4-mini"]
+```
+
+For ChatGPT subscription-backed Codex auth, keep the provider namespace as `openai`, switch runtime auth mode to `codex`, and import `~/.codex/auth.json`:
+
+```hcl
+model_providers_enabled           = ["openai"]
+openai_auth_mode                  = "codex"
+default_model                     = "openai/gpt-5.5"
+fallback_models                   = ["openai/gpt-5.4-mini"]
+openai_codex_auth_json_base64     = "..."
+```
+
+Legacy `openai-codex/*` refs are still accepted for older configs, but new deployments should prefer `openai/*` plus `openai_auth_mode = "codex"`.
 
 ## Repo-local SSH workflow
 
@@ -323,7 +347,9 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 | `repo_ssh_private_key_path` | `".ssh/id_ed25519_agent_stack"` | Repo-relative key path for auto key resolution/generation |
 | `anthropic_api_key` | `""` | Anthropic API key (pay-per-token models) |
 | `anthropic_auth_key` | `""` | Claude Code setup-token for native Anthropic provider auth (run `claude setup-token` to generate) |
-| `openai_api_key` | `""` | OpenAI API key |
+| `openai_api_key` | `""` | OpenAI API key for `openai_auth_mode = "api_key"` |
+| `openai_auth_mode` | `"api_key"` | Auth/runtime mode for `openai/*` models: `api_key` or `codex` |
+| `openai_codex_auth_json_base64` | `""` | Base64 of `~/.codex/auth.json` for `openai_auth_mode = "codex"` |
 | `groq_api_key` | `""` | Groq API key |
 | `gemini_api_key` | `""` | Google Gemini API key |
 | `telegram_bot_token` | `""` | Optional Telegram BotFather token to preconfigure `channels.telegram.botToken` |

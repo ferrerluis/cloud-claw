@@ -121,6 +121,26 @@ class RenderTfvarsTest(unittest.TestCase):
         self.assertIn('cloud_provider = "digitalocean"', rendered)
         self.assertIn('do_token = "do-real-token"', rendered)
         self.assertIn("tailscale_enabled = false", rendered)
+        self.assertIn('openai_auth_mode = "api_key"', rendered)
+
+    def test_renders_openai_codex_auth_mode_with_canonical_models(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "digitalocean",
+                "do_token": "do-real-token",
+                "model_providers_enabled": ["openai"],
+                "openai_auth_mode": "codex",
+                "default_model": "openai/gpt-5.5",
+                "fallback_models": ["openai/gpt-5.4-mini"],
+                "openai_codex_auth_json_base64": "eyJmb28iOiAiYmFyIn0=",
+                "tailscale_enabled": False,
+            }
+        )
+        self.assertIn('openai_auth_mode = "codex"', rendered)
+        self.assertIn('default_model = "openai/gpt-5.5"', rendered)
+        self.assertIn('fallback_models = [\n  "openai/gpt-5.4-mini",\n]', rendered)
+        self.assertIn('openai_api_key = ""', rendered)
+        self.assertIn('openai_codex_auth_json_base64 = "eyJmb28iOiAiYmFyIn0="', rendered)
 
     def test_renders_fresh_hetzner_fixture(self) -> None:
         _, rendered = run_render(
@@ -191,6 +211,7 @@ class RenderTfvarsTest(unittest.TestCase):
             "repo_ssh_host_alias",
             "repo_ssh_private_key_path",
             "openclaw_health_retries",
+            "openai_auth_mode",
             "postgres_image",
         ]:
             self.assertIn(f"{name} = {variable_default(name)}", rendered)
@@ -262,6 +283,36 @@ class RenderTfvarsTest(unittest.TestCase):
             expect_success=False,
         )
         self.assertIn("openai_codex_auth_json_base64", result.stderr)
+
+    def test_rejects_openai_codex_auth_mode_without_imported_auth(self) -> None:
+        result, _ = run_render(
+            {
+                "cloud_provider": "digitalocean",
+                "do_token": "do-real-token",
+                "model_providers_enabled": ["openai"],
+                "openai_auth_mode": "codex",
+                "default_model": "openai/gpt-5.5",
+                "fallback_models": ["openai/gpt-5.4-mini"],
+                "tailscale_enabled": False,
+            },
+            expect_success=False,
+        )
+        self.assertIn("openai_codex_auth_json_base64", result.stderr)
+
+    def test_rejects_openai_api_key_auth_mode_without_api_key(self) -> None:
+        result, _ = run_render(
+            {
+                "cloud_provider": "digitalocean",
+                "do_token": "do-real-token",
+                "model_providers_enabled": ["openai"],
+                "openai_auth_mode": "api_key",
+                "default_model": "openai/gpt-5.5",
+                "fallback_models": ["openai/gpt-5.4-mini"],
+                "tailscale_enabled": False,
+            },
+            expect_success=False,
+        )
+        self.assertIn("openai_api_key", result.stderr)
 
     def test_rejects_external_postgres_without_connection_values(self) -> None:
         result, _ = run_render(

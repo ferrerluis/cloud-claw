@@ -86,14 +86,14 @@ repo_ssh_identity_file   = "./.ssh/id_ed25519_agent_stack"
 # Leave as 0.0.0.0/0 only if you rely solely on Tailscale for access control.
 allowed_ssh_cidr = "0.0.0.0/0"
 
-# ── LLM API keys ─────────────────────────────────────────────────
-# Supply only the keys for the providers you intend to use in AgentStack.
-# Unused keys can be left as empty strings.
+# ── LLM credentials ───────────────────────────────────────────────
+# Supply only the credentials for the providers you intend to use in AgentStack.
+# Unused keys/auth payloads can be left as empty strings.
 
 anthropic_api_key  = "sk-ant-api03-..."  # Claude (Opus, Sonnet, Haiku) — pay-per-token
 anthropic_auth_key = ""                  # Legacy Anthropic setup-token path; leave blank unless you explicitly need it
 openai_api_key     = "sk-..."            # GPT-4o, o3, etc. via the OpenAI API
-openai_codex_auth_json_base64 = ""       # Base64 of ~/.codex/auth.json for openai-codex/* subscription models
+openai_codex_auth_json_base64 = ""       # Base64 of ~/.codex/auth.json for openai_auth_mode="codex"
 groq_api_key       = ""                 # e.g. gsk_...  (Llama, Mixtral via Groq)
 gemini_api_key     = ""                 # e.g. AIzaSy...
 
@@ -121,6 +121,15 @@ model_providers_enabled = [
   "anthropic",
   "google",
 ]
+# OpenAI auth mode for openai/* models:
+# - api_key: use openai_api_key for direct OpenAI Platform billing
+# - codex: use openai_codex_auth_json_base64 for ChatGPT subscription-backed Codex auth
+# ChatGPT subscription-backed example:
+#   model_providers_enabled = ["openai"]
+#   openai_auth_mode = "codex"
+#   default_model = "openai/gpt-5.5"
+#   fallback_models = ["openai/gpt-5.4-mini"]
+openai_auth_mode = "api_key"
 default_model = "anthropic/claude-haiku-4-5"
 fallback_models = [
   "google/gemini-3-flash-preview",

@@ -24,23 +24,24 @@ Implementation note:
 
 - OpenAI supports two distinct routes that matter here:
   - `openai/*` models use `openai_api_key` and bill through the OpenAI API.
-  - `openai-codex/*` models use a Codex login and subscription-backed OAuth state.
+- `openai/*` models can use either direct OpenAI API-key auth or Codex login based on `openai_auth_mode`.
+- Legacy `openai-codex/*` model refs use a Codex login and subscription-backed OAuth state.
 - OpenAI's API reference says the API authenticates with API keys.
 - OpenAI's Codex CLI docs say the first Codex run prompts for sign-in with a ChatGPT account or an API key.
 - OpenAI's ChatGPT sign-in docs say `codex login` stores credentials locally and creates a key automatically.
-- OpenClaw's provider docs explicitly support Codex subscription auth for `openai-codex/*` and say OpenClaw can reuse an existing Codex CLI login.
+- OpenClaw's provider docs support Codex subscription auth and say OpenClaw can reuse an existing Codex CLI login; on current OpenClaw releases this uses canonical `openai/*` refs plus Codex runtime routing.
 
 Recommended setup behavior:
 
-- If the user picks `openai/*` models, ask for `openai_api_key`.
-- If the user picks `openai-codex/*` models, do not ask for a raw refresh token by default.
+- If the user picks `openai/*` models with `openai_auth_mode = "api_key"`, ask for `openai_api_key`.
+- If the user picks `openai/*` models with `openai_auth_mode = "codex"` or legacy `openai-codex/*` models, do not ask for a raw refresh token by default.
 - For this repo's import path, support only the ChatGPT-backed Codex login shape that includes `tokens.refresh_token`.
 - Instead:
   1. Ask whether the user wants to use their local Codex CLI login for this cloud deployment.
   2. Before inspecting anything, explain that import reads `~/.codex/auth.json` and stores a base64 auth payload in `terraform.tfvars`.
   3. Explain that this value may later appear in Terraform-managed state or cloud-init data.
   4. If the user agrees, ask them to run `codex login` if they have not authenticated Codex locally yet.
-  5. Tell them to choose the ChatGPT sign-in path, not API-key login, for `openai-codex/*`.
+  5. Tell them to choose the ChatGPT sign-in path, not API-key login, for subscription-backed Codex auth.
   6. Verify the login is importable with `python3 skills/agent-stack-setup/scripts/import_codex_auth.py --inspect`.
   7. Store the base64 output from `python3 skills/agent-stack-setup/scripts/import_codex_auth.py` in `openai_codex_auth_json_base64`.
   8. If the user does not agree, offer three safe alternatives: paste an already-exported `openai_codex_auth_json_base64`, switch to `openai/*` API-key models, or defer model auth until later.
@@ -50,14 +51,14 @@ Why this is the preferred path:
 - OpenAI's public docs do not describe a manual "copy this refresh token out of the browser" workflow.
 - The official Codex flow is local login, with credentials stored locally.
 - This repo can import that local credential state directly, which is safer and less error-prone than asking the user to paste opaque OAuth tokens.
-- Although Codex can also authenticate with an API key, this specific importer does not support API-key-only auth files for `openai-codex/*`. If the user only wants API-key auth, steer them to `openai/*` models instead.
+- Although Codex can also authenticate with an API key, this specific importer supports the ChatGPT-backed Codex login shape only. If the user only wants API-key auth, steer them to `openai_auth_mode = "api_key"`.
 - `import_codex_auth.py --inspect` still reads local auth metadata, so it requires the same explicit consent as the full import.
 
 Implementation note:
 
 - Terraform now supports `openai_codex_auth_json_base64`.
 - Bootstrap writes that payload to `/opt/agent-stack/codex/auth.json` and mounts it into the OpenClaw container as `/home/node/.codex/auth.json`.
-- Renderer validation now requires `openai_codex_auth_json_base64` when any configured model uses `openai-codex/*`.
+- Renderer validation now requires `openai_codex_auth_json_base64` when `openai_auth_mode = "codex"` with `openai/*` models or when legacy `openai-codex/*` refs are used.
 - Because this value is treated like other setup secrets, the skill should remind the user that it will live in `terraform.tfvars` and may also appear in Terraform-managed state or cloud-init data.
 
 ## DigitalOcean Volume Reuse

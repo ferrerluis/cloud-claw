@@ -160,12 +160,14 @@ Preset bundles:
   - `fallback_models = ["google/gemini-3-flash-preview", "anthropic/claude-sonnet-4-6"]`
 - `OpenAI API setup`
   - `model_providers_enabled = ["openai"]`
+  - `openai_auth_mode = "api_key"`
   - `default_model = "openai/gpt-5.4"`
   - `fallback_models = ["openai/gpt-5.4-mini"]`
 - `OpenAI Codex setup`
   - `model_providers_enabled = ["openai"]`
-  - `default_model = "openai-codex/gpt-5.4"`
-  - `fallback_models = ["openai-codex/gpt-5.3-codex"]`
+  - `openai_auth_mode = "codex"`
+  - `default_model = "openai/gpt-5.5"`
+  - `fallback_models = ["openai/gpt-5.4-mini"]`
 
 ## Prompt 6: Provider credentials
 
@@ -173,8 +175,8 @@ Ask only for secrets that match the chosen channel and model providers.
 
 Examples:
 
-- Ask `openai_api_key` only if any configured model uses `openai/*`.
-- If any configured model uses `openai-codex/*`, ask for explicit consent before inspecting or importing a local Codex CLI login into `openai_codex_auth_json_base64`.
+- Ask `openai_api_key` only if any configured model uses `openai/*` with `openai_auth_mode = "api_key"`.
+- If any configured model uses `openai/*` with `openai_auth_mode = "codex"` or legacy `openai-codex/*`, ask for explicit consent before inspecting or importing a local Codex CLI login into `openai_codex_auth_json_base64`.
 - Ask `groq_api_key` only if the user selected Groq.
 - Ask `gemini_api_key` only if the user selected Google Gemini.
 - Ask `anthropic_api_key` only if the user selected Anthropic.
@@ -182,7 +184,7 @@ Examples:
 Special rules:
 
 - Do not ask `anthropic_auth_key` in the normal flow. See `auth-and-schema-gaps.md`.
-- If the user wants subscription-backed OpenAI access for `openai-codex/*`, first explain that local import reads `~/.codex/auth.json` and stores a base64 auth payload in `terraform.tfvars`, which may later be copied into Terraform state or cloud-init data.
+- If the user wants subscription-backed OpenAI access, first explain that local import reads `~/.codex/auth.json` and stores a base64 auth payload in `terraform.tfvars`, which may later be copied into Terraform state or cloud-init data.
 - Only after the user chooses local import, ask them to run `codex login` if needed, choose the ChatGPT sign-in path, then verify importability with `python3 skills/agent-stack-setup/scripts/import_codex_auth.py --inspect` before storing the base64 output from `python3 skills/agent-stack-setup/scripts/import_codex_auth.py`.
 - If the user does not want local import, offer to accept an already-exported `openai_codex_auth_json_base64`, switch to `openai/*` API-key models, or defer until they are ready.
 - Do not ask the user to manually paste a raw OpenAI refresh token unless import is impossible.

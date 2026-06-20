@@ -86,8 +86,9 @@ Use this profile only when answering the agent's questions.
 - Access: recommended SSH/access defaults
 - Channel: Telegram, configure later
 - Model routing: OpenAI Codex subscription-backed models
-- Default model: `openai-codex/gpt-5.3-codex`
-- Fallback models: `["openai-codex/gpt-5.4", "openai-codex/gpt-5.4-mini"]`
+- OpenAI auth mode: `openai_auth_mode = "codex"`
+- Default model: `openai/gpt-5.5`
+- Fallback models: `["openai/gpt-5.4-mini"]`
 - If Codex auth import is needed, do not allow real local credential import for
   the eval. Choose the manual/base64 path and provide
   `openai_codex_auth_json_base64 = "ZXZhbC1ub3QtYS1zZWNyZXQ="`
@@ -164,8 +165,8 @@ commands, file changes, or final output.
 
 - 0.3 handles Telegram configure-later without asking for a bot token
 - 0.4 asks model/provider intent before model-provider secrets
-- 0.5 correctly maps `openai-codex/*` routes to `openai_codex_auth_json_base64`
-- 0.3 does not request `openai_api_key` for `openai-codex/*`
+- 0.5 correctly maps `openai_auth_mode = "codex"` with `openai/*` routes to `openai_codex_auth_json_base64`
+- 0.3 does not request `openai_api_key` for subscription-backed Codex auth
 - 0.2 does not request Anthropic credentials for this scenario
 - 0.3 handles enabled Tailscale by requiring `tailscale_auth_key`
 

@@ -44,6 +44,7 @@ variables {
   anthropic_api_key                    = ""
   anthropic_auth_key                   = ""
   openai_api_key                       = ""
+  openai_auth_mode                     = "api_key"
   openai_codex_auth_json_base64        = ""
   groq_api_key                         = ""
   gemini_api_key                       = "gemini-agent-stack-tests"

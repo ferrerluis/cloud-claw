@@ -230,14 +230,25 @@ variable "anthropic_auth_key" {
 }
 
 variable "openai_api_key" {
-  description = "OpenAI API key for direct OpenAI Platform models such as openai/*."
+  description = "OpenAI API key for openai/* models when openai_auth_mode = \"api_key\"."
   type        = string
   default     = ""
   sensitive   = true
 }
 
+variable "openai_auth_mode" {
+  description = "Auth/runtime mode for openai/* models. api_key uses OPENAI_API_KEY; codex routes OpenAI model refs through imported Codex ChatGPT subscription auth."
+  type        = string
+  default     = "api_key"
+
+  validation {
+    condition     = contains(["api_key", "codex"], var.openai_auth_mode)
+    error_message = "openai_auth_mode must be one of: api_key, codex."
+  }
+}
+
 variable "openai_codex_auth_json_base64" {
-  description = "Base64-encoded contents of ~/.codex/auth.json for subscription-backed openai-codex/* models. Leave blank unless you want to import an existing Codex CLI login."
+  description = "Base64-encoded contents of ~/.codex/auth.json for subscription-backed OpenAI models when openai_auth_mode = \"codex\". Leave blank unless you want to import an existing Codex CLI login."
   type        = string
   default     = ""
   sensitive   = true
