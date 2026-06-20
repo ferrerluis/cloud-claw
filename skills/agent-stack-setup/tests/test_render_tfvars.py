@@ -12,6 +12,32 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "skills/agent-stack-setup/scripts/render_tfvars.py"
+VARIABLES_TF = REPO_ROOT / "variables.tf"
+
+
+def variable_default(name: str) -> str:
+    source = VARIABLES_TF.read_text(encoding="utf-8")
+    marker = f'variable "{name}"'
+    start = source.index(marker)
+    brace_start = source.index("{", start)
+    depth = 0
+    for index in range(brace_start, len(source)):
+        char = source[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                block = source[brace_start + 1 : index]
+                break
+    else:
+        raise AssertionError(f"unterminated variable block for {name}")
+
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("default"):
+            return stripped.split("=", 1)[1].strip()
+    raise AssertionError(f"variable {name} has no default")
 
 
 def run_render(
@@ -146,6 +172,28 @@ class RenderTfvarsTest(unittest.TestCase):
         self.assertIn('enabled_services = [\n  "openclaw",\n  "hermes",\n  "n8n",\n]', rendered)
         self.assertIn('n8n_database_mode = "local_postgres"', rendered)
         self.assertIn('postgres_image = "postgres:17-alpine"', rendered)
+
+    def test_rendered_defaults_match_variables_tf_authority(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "aws",
+                "aws_access_key": "AKIAREALKEY123456",
+                "aws_secret_key": "super-secret",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_auth_key": "tskey-auth-real-value",
+            }
+        )
+        for name in [
+            "project_name",
+            "repo_ssh_host_alias",
+            "repo_ssh_private_key_path",
+            "openclaw_health_retries",
+            "postgres_image",
+        ]:
+            self.assertIn(f"{name} = {variable_default(name)}", rendered)
 
     def test_renders_openclaw_only_service_selection(self) -> None:
         _, rendered = run_render(

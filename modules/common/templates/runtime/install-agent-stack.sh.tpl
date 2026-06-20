@@ -599,6 +599,24 @@ refresh_openclaw_gateway_config() {
   fi
 }
 
+restart_agent_stack_for_config() {
+  local restart_status=0
+  systemctl restart agent-stack || restart_status=$?
+  if [ "$restart_status" != "0" ]; then
+    echo "[openclaw] WARNING: systemctl restart agent-stack exited $restart_status; waiting for service recovery before deciding failure."
+  fi
+
+  for attempt in $(seq 1 36); do
+    if systemctl is-active --quiet agent-stack; then
+      if [ "$OPENCLAW_ENABLED" != "true" ] || wait_openclaw_healthy; then
+        return 0
+      fi
+    fi
+    sleep 5
+  done
+  return 1
+}
+
 openclaw_config_backup=""
 if [ -f "$OPENCLAW_CONFIG" ]; then
   openclaw_config_backup="$(mktemp)"
@@ -611,7 +629,7 @@ refresh_openclaw_gateway_config "$TAILSCALE_DNS"
 
 if [ "$NEEDS_RESTART" = "1" ]; then
   echo "[openclaw] Applying accumulated config changes with one final restart..."
-  if ! systemctl restart agent-stack; then
+  if ! restart_agent_stack_for_config; then
     if [ -n "$openclaw_config_backup" ] && [ -f "$openclaw_config_backup" ]; then
       cp -a "$openclaw_config_backup" "$OPENCLAW_CONFIG"
       chown 1000:1000 "$OPENCLAW_CONFIG" || true
@@ -619,7 +637,6 @@ if [ "$NEEDS_RESTART" = "1" ]; then
     fi
     fail "agent-stack restart failed after OpenClaw config changes"
   fi
-  wait_openclaw_healthy || echo "[openclaw] WARNING: OpenClaw did not become healthy after final restart."
 fi
 rm -f "$openclaw_config_backup"
 

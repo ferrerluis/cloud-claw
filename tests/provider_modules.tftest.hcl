@@ -1,0 +1,201 @@
+provider "aws" {
+  region                      = "us-east-1"
+  access_key                  = "test"
+  secret_key                  = "test"
+  skip_credentials_validation = true
+  skip_requesting_account_id  = true
+  skip_metadata_api_check     = true
+  skip_region_validation      = true
+}
+
+provider "digitalocean" {
+  token = "test"
+}
+
+provider "hcloud" {
+  token = "test"
+}
+
+mock_provider "aws" {
+  alias           = "fake"
+  source          = "./tests/mocks/aws"
+  override_during = plan
+}
+
+mock_provider "digitalocean" {
+  alias           = "fake"
+  source          = "./tests/mocks/digitalocean"
+  override_during = plan
+}
+
+mock_provider "hcloud" {
+  alias           = "fake"
+  source          = "./tests/mocks/hcloud"
+  override_during = plan
+}
+
+variables {
+  project_name                         = "agent-stack"
+  admin_username                       = "admin"
+  ssh_public_key                       = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
+  allowed_ssh_cidr                     = "203.0.113.0/24"
+  tailscale_enabled                    = true
+  tailscale_auth_key                   = "tskey-auth-agent-stack-tests"
+  anthropic_api_key                    = ""
+  anthropic_auth_key                   = ""
+  openai_api_key                       = ""
+  openai_codex_auth_json_base64        = ""
+  groq_api_key                         = ""
+  gemini_api_key                       = "gemini-agent-stack-tests"
+  telegram_bot_token                   = ""
+  telegram_allow_from                  = []
+  openclaw_config_mode                 = "auto"
+  agent_channel                        = "telegram"
+  model_providers_enabled              = ["google"]
+  default_model                        = "google/gemini-3-flash-preview"
+  fallback_models                      = []
+  openclaw_version                     = "latest"
+  openclaw_node_options                = ""
+  openclaw_swap_size_mb                = 0
+  openclaw_health_start_period_seconds = 120
+  openclaw_health_retries              = 8
+  seed_starter_workspace_files         = true
+  starter_soul_profile                 = "balanced"
+  gateway_token                        = "gateway-token-agent-stack-tests"
+  enabled_services                     = ["openclaw", "hermes", "n8n"]
+  hermes_image                         = "nousresearch/hermes-agent:latest"
+  hermes_dashboard_enabled             = true
+  hermes_api_server_enabled            = true
+  hermes_api_server_key                = "hermes-key-agent-stack-tests"
+  n8n_image                            = "docker.n8n.io/n8nio/n8n:stable"
+  n8n_database_mode                    = "local_postgres"
+  n8n_encryption_key                   = "n8n-key-agent-stack-tests"
+  n8n_public_webhooks_enabled          = true
+  n8n_generic_timezone                 = "America/New_York"
+  postgres_image                       = "postgres:17-alpine"
+  postgres_database                    = "n8n"
+  postgres_user                        = "n8n"
+  postgres_password                    = "postgres-password-agent-stack-tests"
+  n8n_postgres_host                    = "postgres"
+  n8n_postgres_port                    = 5432
+  n8n_postgres_database                = "n8n"
+  n8n_postgres_user                    = "n8n"
+  n8n_postgres_password                = "postgres-password-agent-stack-tests"
+  n8n_postgres_ssl_enabled             = false
+  public_domain_enabled                = false
+  openclaw_domain                      = ""
+  hermes_domain                        = ""
+  n8n_domain                           = ""
+  acme_email                           = ""
+  ui_auth_mode                         = "basic"
+  ui_auth_username                     = "admin"
+  ui_auth_password                     = "ui-password-agent-stack-tests"
+}
+
+run "aws_module_plans_with_mocked_provider" {
+  command   = plan
+  state_key = "aws-module"
+
+  module {
+    source = "./modules/aws"
+  }
+
+  providers = {
+    aws = aws.fake
+  }
+
+  variables {
+    aws_region             = "us-east-1"
+    aws_instance_type      = "t3.small"
+    aws_ami_id             = "ami-0agentstacktest"
+    aws_disk_size_gb       = 50
+    aws_existing_volume_id = "vol-existing-agentstacktest"
+  }
+
+  assert {
+    condition     = output.instance_public_ip == "203.0.113.10"
+    error_message = "AWS module should use the mocked instance public IP."
+  }
+
+  assert {
+    condition     = output.ebs_volume_id == "vol-existing-agentstacktest"
+    error_message = "AWS module should preserve an explicitly supplied existing EBS volume ID."
+  }
+
+  assert {
+    condition     = output.ssh_command == "ssh admin@203.0.113.10"
+    error_message = "AWS module SSH handoff should use the admin user and mocked public IP."
+  }
+}
+
+run "digitalocean_module_plans_with_mocked_provider" {
+  command   = plan
+  state_key = "digitalocean-module"
+
+  module {
+    source = "./modules/digitalocean"
+  }
+
+  providers = {
+    digitalocean = digitalocean.fake
+  }
+
+  variables {
+    do_region               = "nyc3"
+    do_droplet_size         = "s-2vcpu-2gb"
+    do_disk_size_gb         = 20
+    do_existing_volume_id   = "do-volume-existing-agentstacktest"
+    do_existing_volume_name = "agent-stack-existing-data"
+  }
+
+  assert {
+    condition     = output.instance_public_ip == "203.0.113.20"
+    error_message = "DigitalOcean module should use the mocked Droplet public IP."
+  }
+
+  assert {
+    condition     = output.volume_id == "do-volume-existing-agentstacktest"
+    error_message = "DigitalOcean module should preserve an explicitly supplied existing volume ID."
+  }
+
+  assert {
+    condition     = output.volume_name == "agent-stack-existing-data"
+    error_message = "DigitalOcean module should preserve the existing volume name used for the device path."
+  }
+}
+
+run "hetzner_module_plans_with_mocked_provider" {
+  command   = plan
+  state_key = "hetzner-module"
+
+  module {
+    source = "./modules/hetzner"
+  }
+
+  providers = {
+    hcloud = hcloud.fake
+  }
+
+  variables {
+    hcloud_location           = "ash"
+    hcloud_server_type        = "cpx21"
+    hcloud_image              = "ubuntu-22.04"
+    hcloud_disk_size_gb       = 50
+    hcloud_existing_volume_id = "31338"
+  }
+
+  assert {
+    condition     = output.instance_public_ip == "203.0.113.30"
+    error_message = "Hetzner module should use the mocked server public IP."
+  }
+
+  assert {
+    condition     = output.volume_id == "31338"
+    error_message = "Hetzner module should preserve an explicitly supplied existing volume ID."
+  }
+
+  assert {
+    condition     = output.ssh_command == "ssh admin@203.0.113.30"
+    error_message = "Hetzner module SSH handoff should use the admin user and mocked public IP."
+  }
+}

@@ -93,6 +93,22 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn(".last-apply.json", self.installer)
         self.assertIn("restoring previous runtime files", self.installer)
 
+    def test_runtime_stages_sensitive_files_with_private_permissions(self) -> None:
+        main_tf = MAIN_TF.read_text(encoding="utf-8")
+        self.assertIn("install -d -m 0700", main_tf)
+        self.assertIn("chmod 0700 ${local.runtime_staging_dir}", main_tf)
+        self.assertIn("chmod 0600 ${local.runtime_staging_dir}/.env", main_tf)
+        self.assertIn("${local.runtime_staging_dir}/openai_codex_auth_json_base64", main_tf)
+
+    def test_runtime_templates_include_tailscale_watchdog_units(self) -> None:
+        watchdog = (RUNTIME_DIR / "agent-stack-tailscale-watchdog.sh.tpl").read_text(encoding="utf-8")
+        watchdog_service = (RUNTIME_DIR / "agent-stack-tailscale-watchdog.service.tpl").read_text(encoding="utf-8")
+        watchdog_timer = (RUNTIME_DIR / "agent-stack-tailscale-watchdog.timer.tpl").read_text(encoding="utf-8")
+        self.assertIn("tailscale --socket=/tmp/tailscaled.sock status --json", watchdog)
+        self.assertIn("serve status", watchdog)
+        self.assertIn("agent-stack-tailscale-watchdog", watchdog_service)
+        self.assertIn("OnBootSec", watchdog_timer)
+
 
 class RuntimeProvisioningContractTest(unittest.TestCase):
     @classmethod
@@ -173,6 +189,28 @@ class LayoutMigratorTest(unittest.TestCase):
         self.assertTrue((data_root / "openclaw" / "openclaw.json").exists())
         self.assertTrue((data_root / "hermes" / "session.json").exists())
         self.assertTrue((data_root / "postgres" / "PG_VERSION").exists())
+
+    def test_layout_migrator_is_idempotent(self) -> None:
+        temp_path = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, temp_path)
+        app_root = temp_path / "agent-stack"
+        data_root = app_root / "data"
+        legacy_root = temp_path / "openclaw"
+        data_root.mkdir(parents=True)
+        script_path = temp_path / "agent-stack-migrate-layout"
+        script_path.write_text(self.script, encoding="utf-8")
+        script_path.chmod(0o755)
+
+        env = dict(os.environ)
+        env["AGENT_STACK_APP_ROOT"] = str(app_root)
+        env["AGENT_STACK_DATA_ROOT"] = str(data_root)
+        env["AGENT_STACK_LEGACY_ROOT"] = str(legacy_root)
+        for _ in range(2):
+            subprocess.run(["bash", str(script_path)], check=True, env=env, capture_output=True, text=True)
+
+        for name in ["openclaw", "hermes", "n8n", "postgres", "caddy"]:
+            self.assertTrue((data_root / name).is_dir(), name)
+        self.assertTrue((data_root / ".agent-stack-layout-version").exists())
 
 
 if __name__ == "__main__":

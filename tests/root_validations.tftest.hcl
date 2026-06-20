@@ -1,0 +1,163 @@
+override_module {
+  target = module.aws
+  outputs = {
+    instance_public_ip = "203.0.113.10"
+    instance_id        = "i-validation-aws"
+    ebs_volume_id      = "vol-validation-aws"
+    ssh_command        = "ssh admin@203.0.113.10"
+  }
+}
+
+override_module {
+  target = module.digitalocean
+  outputs = {
+    instance_public_ip = "203.0.113.20"
+    droplet_id         = 4242
+    volume_name        = "agent-stack-data"
+    volume_id          = "do-volume-validation"
+    ssh_command        = "ssh admin@203.0.113.20"
+  }
+}
+
+override_module {
+  target = module.hetzner
+  outputs = {
+    instance_public_ip = "203.0.113.30"
+    server_id          = 31337
+    volume_id          = "31338"
+    ssh_command        = "ssh admin@203.0.113.30"
+  }
+}
+
+variables {
+  project_name                  = "agent-stack"
+  ssh_public_key                = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
+  repo_ssh_private_key_path     = "tests/fixtures/fake_ssh_private_key.txt"
+  generate_repo_ssh_config      = false
+  aws_access_key                = "AKIAAGENTSTACKTESTS"
+  aws_secret_key                = "agent-stack-tests"
+  do_token                      = "do-agent-stack-tests"
+  hcloud_token                  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  model_providers_enabled       = ["google"]
+  default_model                 = "google/gemini-3-flash-preview"
+  fallback_models               = []
+  gemini_api_key                = "gemini-agent-stack-tests"
+  gateway_token                 = "gateway-token-agent-stack-tests"
+  hermes_api_server_key         = "hermes-key-agent-stack-tests"
+  n8n_encryption_key            = "n8n-key-agent-stack-tests"
+  postgres_password             = "postgres-password-agent-stack-tests"
+  ui_auth_password              = "ui-password-agent-stack-tests"
+  enabled_services              = ["openclaw", "hermes", "n8n"]
+  tailscale_enabled             = false
+  tailscale_auth_key            = ""
+  openai_codex_auth_json_base64 = ""
+}
+
+run "rejects_unknown_cloud_provider" {
+  command = plan
+
+  variables {
+    cloud_provider = "azure"
+  }
+
+  expect_failures = [
+    var.cloud_provider,
+  ]
+}
+
+run "rejects_root_admin_user" {
+  command = plan
+
+  variables {
+    admin_username = "root"
+  }
+
+  expect_failures = [
+    var.admin_username,
+  ]
+}
+
+run "rejects_tailscale_without_auth_key" {
+  command = plan
+
+  variables {
+    tailscale_enabled  = true
+    tailscale_auth_key = ""
+  }
+
+  expect_failures = [
+    var.tailscale_auth_key,
+  ]
+}
+
+run "rejects_public_domain_without_domains" {
+  command = plan
+
+  variables {
+    public_domain_enabled = true
+  }
+
+  expect_failures = [
+    terraform_data.input_validation,
+  ]
+}
+
+run "rejects_external_postgres_without_connection_values" {
+  command = plan
+
+  variables {
+    n8n_database_mode = "external_postgres"
+  }
+
+  expect_failures = [
+    terraform_data.input_validation,
+  ]
+}
+
+run "rejects_digitalocean_existing_volume_without_name" {
+  command = plan
+
+  variables {
+    do_existing_volume_id = "do-volume-without-name"
+  }
+
+  expect_failures = [
+    var.do_existing_volume_id,
+  ]
+}
+
+run "rejects_empty_model_providers" {
+  command = plan
+
+  variables {
+    model_providers_enabled = []
+  }
+
+  expect_failures = [
+    var.model_providers_enabled,
+  ]
+}
+
+run "rejects_empty_default_model" {
+  command = plan
+
+  variables {
+    default_model = ""
+  }
+
+  expect_failures = [
+    var.default_model,
+  ]
+}
+
+run "rejects_invalid_enabled_service" {
+  command = plan
+
+  variables {
+    enabled_services = ["openclaw", "redis"]
+  }
+
+  expect_failures = [
+    var.enabled_services,
+  ]
+}
