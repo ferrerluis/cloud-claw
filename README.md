@@ -25,7 +25,7 @@ Bootstrap is intentionally split into two provider-neutral phases:
 1. `cloud-init` runs a small first-boot loader on AWS, DigitalOcean, and Hetzner. It creates the `admin` user, installs the SSH key, waits for and mounts the persistent data volume at `/opt/agent-stack/data`, and writes `/opt/agent-stack/.loader-ready.json`.
 2. Terraform waits for `cloud-init status --wait`, connects over SSH as `admin`, uploads the rendered runtime bundle into a private `/opt/agent-stack/.staging-*` directory, and runs the shared installer with `sudo`.
 3. The installer writes `/opt/agent-stack/docker-compose.yml` and `/opt/agent-stack/.env`, installs Docker when needed, validates the Compose config, and creates the `agent-stack` systemd service. `openclaw.service` remains as a compatibility wrapper.
-4. If enabled, starts a Tailscale sidecar container that authenticates and runs `tailscale serve` for OpenClaw over HTTPS on your tailnet.
+4. If enabled, configures Tailscale in `sidecar` mode by default, or directly on the host when `tailscale_mode = "host"`, and runs `tailscale serve` for OpenClaw over HTTPS on your tailnet.
 5. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste.
 6. Applies `openclaw_config_mode`:
    - `auto` (default): preserve an existing `openclaw.json`, manage fresh installs
@@ -42,7 +42,7 @@ Bootstrap is intentionally split into two provider-neutral phases:
     - restricted to explicitly selected `model_providers_enabled`
 12. Writes `/opt/agent-stack/.last-apply.json` with the runtime artifact checksum and selected services after a successful installer run.
 
-OpenClaw, Hermes, n8n, and Postgres run as Docker containers. UI ports bind to `127.0.0.1` by default. If `public_domain_enabled = true`, Caddy opens 80/443, terminates HTTPS, and protects UI routes with basic auth. n8n webhook paths can remain public when `n8n_public_webhooks_enabled = true`.
+OpenClaw, Hermes, n8n, Postgres, and the optional workspace run as Docker containers. UI ports bind to `127.0.0.1` by default. If `public_domain_enabled = true`, Caddy opens 80/443, terminates HTTPS, and protects UI routes with basic auth. n8n webhook paths can remain public when `n8n_public_webhooks_enabled = true`.
 
 ---
 
@@ -97,13 +97,15 @@ ssh_command            = "ssh admin@1.2.3.4"
 repo_ssh_command       = "./bin/agent-stack-ssh"
 repo_ssh_config_path   = "./.ssh/config"
 resolved_ssh_public_key_source = "existing_public_key"
-tailscale_note         = "Tailscale is enabled. Sidecar device 'openclaw' will appear in your admin console..."
-dashboard_url          = "https://openclaw  (via Tailscale Serve)"
+tailscale_note         = "Tailscale is enabled in sidecar mode. Device 'agent-stack' will appear in your admin console..."
+dashboard_url          = "https://agent-stack  (via Tailscale Serve, mode=sidecar)"
 dashboard_url_with_token_import = "https://openclaw/#token=<gateway-token>"
-openclaw_url           = "https://openclaw  (via Tailscale Serve)"
+openclaw_url           = "https://agent-stack  (via Tailscale Serve, mode=sidecar)"
 hermes_url             = "http://localhost:9119  (after SSH tunnel)"
 n8n_url                = "http://localhost:5678  (after SSH tunnel)"
 n8n_webhook_url        = "http://localhost:5678/webhook  (after SSH tunnel)"
+workspace_ssh_command  = "disabled"
+workspace_codex_login_command = "disabled"
 pair_latest_command    = "ssh admin@1.2.3.4 'docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789'"
 repo_pair_latest_command = "./bin/agent-stack-ssh -- docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw devices approve --latest --token <gateway-token> --url ws://127.0.0.1:18789"
 whatsapp_login_command = "ssh -t admin@1.2.3.4 'docker compose -f /opt/agent-stack/docker-compose.yml exec openclaw openclaw channels login --channel whatsapp --verbose'"
@@ -262,6 +264,22 @@ You can run a narrower stack, for example:
 enabled_services = ["openclaw"]
 ```
 
+Or enable the Codex workspace container:
+
+```hcl
+enabled_services        = ["openclaw", "hermes", "n8n", "workspace"]
+workspace_username      = "user"
+workspace_password      = "set-a-real-password"
+workspace_ssh_host_port = 2222
+workspace_ssh_public_keys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExamplePublicKeyOnly user@example.com",
+]
+tailscale_enabled       = true
+tailscale_mode          = "host"
+```
+
+The workspace image is Ubuntu-based, installs OpenSSH plus the Codex standalone installer, persists `/home/<workspace_username>` at `/opt/agent-stack/data/workspace/home`, and exposes SSH through the host at `workspace_ssh_host_port`. AgentStack does not open that port in cloud firewall rules; access is intended through the host's Tailscale address. `workspace_ssh_public_keys` accepts public key strings only; local private key paths, 1Password agent socket paths, and other client-side SSH details stay on each operator's machine. The workspace does not mount `/var/run/docker.sock`; diagnostics go through a forced-command host helper that only permits selected status, health, logs, inspect, and restart operations for AgentStack-managed services.
+
 n8n uses local Postgres by default:
 
 ```hcl
@@ -367,7 +385,11 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 | `seed_starter_workspace_files` | `true` | Seed starter workspace files when missing (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, `USER.md`) |
 | `starter_soul_profile` | `"balanced"` | Starter SOUL profile (`balanced`, `builder`, `researcher`) |
 | `gateway_token` | `""` | Optional fixed gateway token (blank = Terraform auto-generates) |
-| `enabled_services` | `["openclaw", "hermes", "n8n"]` | Services to run |
+| `enabled_services` | `["openclaw", "hermes", "n8n"]` | Services to run (`openclaw`, `hermes`, `n8n`, optional `workspace`) |
+| `workspace_username` | `"user"` | User created inside the optional workspace container |
+| `workspace_password` | `""` | Sensitive password for workspace SSH; required when `workspace` is enabled |
+| `workspace_ssh_host_port` | `2222` | Host port mapped to workspace SSH; do not open in provider firewalls |
+| `workspace_ssh_public_keys` | `[]` | OpenSSH public keys authorized for the workspace user |
 | `hermes_image` | `"nousresearch/hermes-agent:latest"` | Hermes Docker image |
 | `hermes_dashboard_enabled` | `true` | Enable Hermes dashboard |
 | `hermes_api_server_enabled` | `true` | Enable Hermes API server |
@@ -390,6 +412,7 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 | `ui_auth_username` | `"admin"` | Public-domain login username |
 | `ui_auth_password` | `""` | Optional fixed public-domain password |
 | `tailscale_enabled` | `true` | Install and configure Tailscale |
+| `tailscale_mode` | `"sidecar"` | `sidecar` container mode or `host` mode using host `tailscaled` |
 | `tailscale_auth_key` | `""` | Tailscale auth key |
 
 ---
@@ -406,6 +429,9 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 | `tailscale_note` | Tailscale access instructions |
 | `dashboard_url` | URL to reach the OpenClaw UI |
 | `dashboard_url_with_token_import` | First-time URL that auto-imports token into Control UI |
+| `workspace_ssh_command` | SSH command for the optional workspace container |
+| `workspace_codex_login_command` | Device-auth command for Codex inside the optional workspace |
+| `workspace_note` | Workspace access and safety notes |
 | `openclaw_url` | OpenClaw UI URL or access hint |
 | `hermes_url` | Hermes dashboard URL or access hint |
 | `n8n_url` | n8n UI URL or access hint |
@@ -425,8 +451,10 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 ## Security notes
 
 - **No public UI ports by default** — service UIs bind to `127.0.0.1` unless `public_domain_enabled = true`.
-- **Tailscale** is the recommended access path; when enabled, a Docker sidecar publishes HTTPS access with `tailscale serve`.
-- The Tailscale sidecar requires `/dev/net/tun` and `NET_ADMIN` / `NET_RAW` capabilities.
+- **Tailscale** is the recommended access path. The default `sidecar` mode publishes HTTPS access with `tailscale serve`; `host` mode installs and runs `tailscaled` on the VM and is required for the workspace SSH access pattern.
+- The Tailscale sidecar requires `/dev/net/tun` and `NET_ADMIN` / `NET_RAW` capabilities. Host mode avoids those container capabilities but installs Tailscale directly on the VM.
+- The optional workspace uses password SSH inside the container and maps port `workspace_ssh_host_port` on the host, but AgentStack does not open that port in provider firewalls. Keep it reachable through the tailnet.
+- The workspace does not mount the Docker socket. Its `agent-stack-diagnostics` command reaches a host-side forced-command helper with a narrow allowlist.
 - Only SSH (port 22) and Tailscale UDP (41641) are opened in firewall rules by default. Ports 80/443 open only when public domains are enabled.
 - `gateway_token` and `dashboard_url_with_token_import` outputs contain credentials. Treat Terraform output/state as sensitive.
 - **API keys** are rendered by Terraform into the runtime bundle and uploaded over SSH into a private `/opt/agent-stack/.staging-*` directory before being installed as `/opt/agent-stack/.env`. They are still present in Terraform state and local plan/apply material, so treat state files and plans as sensitive.

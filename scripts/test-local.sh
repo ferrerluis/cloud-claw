@@ -82,7 +82,11 @@ run_phase "runtime shell syntax" bash -n \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-migrate-layout.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/mount-agent-stack-volume.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-tailscale-watchdog.sh.tpl" \
-  "$TEST_REPO/modules/common/templates/runtime/tailscale-bootstrap.sh.tpl" || true
+  "$TEST_REPO/modules/common/templates/runtime/tailscale-bootstrap.sh.tpl" \
+  "$TEST_REPO/modules/common/templates/runtime/host-tailscale-bootstrap.sh.tpl" \
+  "$TEST_REPO/modules/common/templates/runtime/workspace-entrypoint.sh.tpl" \
+  "$TEST_REPO/modules/common/templates/runtime/agent-stack-diagnostics.sh.tpl" \
+  "$TEST_REPO/modules/common/templates/runtime/agent-stack-diagnostics-ssh.sh.tpl" || true
 
 git -C "$ROOT_DIR" status --short --untracked-files=all > "$STATUS_AFTER"
 if diff -u "$STATUS_BEFORE" "$STATUS_AFTER"; then

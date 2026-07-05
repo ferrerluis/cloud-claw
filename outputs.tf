@@ -15,7 +15,7 @@ locals {
     ? "https://${local.resolved_openclaw_domain}"
     : (
       var.tailscale_enabled
-      ? "https://${var.project_name}  (via Tailscale Serve sidecar — connect your device to the same tailnet first)"
+      ? "https://${var.project_name}  (via Tailscale Serve, mode=${var.tailscale_mode} — connect your device to the same tailnet first)"
       : "http://localhost:18789  (after running the SSH tunnel shown in tailscale_note)"
     )
   )
@@ -72,7 +72,7 @@ output "resolved_ssh_public_key_source" {
 output "tailscale_note" {
   description = "Tailscale access information."
   value = var.tailscale_enabled ? (
-    local.openclaw_enabled ? "Tailscale is enabled. Once the instance boots (~2 min), the sidecar device '${var.project_name}' should appear in your Tailscale admin console. OpenClaw is published with Tailscale Serve: https://${var.project_name} (or use dashboard_url_with_token_import for first-time auto-auth)." : "Tailscale is enabled. OpenClaw is disabled, so no Tailscale Serve route is configured by default."
+    local.openclaw_enabled ? "Tailscale is enabled in ${var.tailscale_mode} mode. Once the instance boots (~2 min), device '${var.project_name}' should appear in your Tailscale admin console. OpenClaw is published with Tailscale Serve: https://${var.project_name} (or use dashboard_url_with_token_import for first-time auto-auth)." : "Tailscale is enabled in ${var.tailscale_mode} mode. OpenClaw is disabled, so no Tailscale Serve route is configured by default."
     ) : (
     "Tailscale is DISABLED. Use an SSH tunnel to reach the dashboard: ssh -L 18789:127.0.0.1:18789 ${var.admin_username}@${local.instance_public_ip}  then open http://localhost:18789"
   )
@@ -94,6 +94,25 @@ output "dashboard_url_with_token_import" {
       : nonsensitive("http://localhost:18789/#token=${local.resolved_gateway_token}  (after running the SSH tunnel shown in tailscale_note)")
     )
   )
+}
+
+output "workspace_ssh_command" {
+  description = "SSH command for the optional workspace container over Tailscale."
+  value       = local.workspace_enabled ? "ssh -p ${var.workspace_ssh_host_port} ${var.workspace_username}@${var.project_name}" : "disabled"
+}
+
+output "workspace_codex_login_command" {
+  description = "Run inside the optional workspace container to authenticate Codex with device auth."
+  value       = local.workspace_enabled ? "ssh -p ${var.workspace_ssh_host_port} ${var.workspace_username}@${var.project_name} 'codex login --device-auth'" : "disabled"
+}
+
+output "workspace_note" {
+  description = "Workspace access notes."
+  value = local.workspace_enabled ? (
+    var.tailscale_enabled && var.tailscale_mode == "host"
+    ? "Workspace is enabled. Connect over the tailnet with workspace_ssh_command, then run workspace_codex_login_command. Password auth is enabled only inside the workspace container; no Docker socket is mounted."
+    : "Workspace is enabled, but the intended supported access path is tailscale_enabled=true with tailscale_mode=\"host\"."
+  ) : "disabled"
 }
 
 output "gateway_token" {

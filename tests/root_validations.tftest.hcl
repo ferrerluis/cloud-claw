@@ -161,3 +161,40 @@ run "rejects_invalid_enabled_service" {
     var.enabled_services,
   ]
 }
+
+run "rejects_workspace_without_password" {
+  command = plan
+
+  variables {
+    enabled_services   = ["openclaw", "workspace"]
+    workspace_password = ""
+  }
+
+  expect_failures = [
+    var.workspace_password,
+  ]
+}
+
+run "rejects_workspace_private_key_path_in_public_keys" {
+  command = plan
+
+  variables {
+    workspace_ssh_public_keys = ["/Users/alice/.ssh/id_ed25519"]
+  }
+
+  expect_failures = [
+    var.workspace_ssh_public_keys,
+  ]
+}
+
+run "rejects_invalid_tailscale_mode" {
+  command = plan
+
+  variables {
+    tailscale_mode = "container"
+  }
+
+  expect_failures = [
+    var.tailscale_mode,
+  ]
+}

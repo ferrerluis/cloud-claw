@@ -392,7 +392,7 @@ variable "gateway_token" {
 # ─────────────────────────────────────────────────────────
 
 variable "enabled_services" {
-  description = "Services to run on the instance. Allowed values: openclaw, hermes, n8n."
+  description = "Services to run on the instance. Allowed values: openclaw, hermes, n8n, workspace."
   type        = list(string)
   default     = ["openclaw", "hermes", "n8n"]
 
@@ -400,10 +400,63 @@ variable "enabled_services" {
     condition = (
       length(var.enabled_services) > 0 &&
       alltrue([
-        for service in var.enabled_services : contains(["openclaw", "hermes", "n8n"], service)
+        for service in var.enabled_services : contains(["openclaw", "hermes", "n8n", "workspace"], service)
       ])
     )
-    error_message = "enabled_services must include at least one service and only: openclaw, hermes, n8n."
+    error_message = "enabled_services must include at least one service and only: openclaw, hermes, n8n, workspace."
+  }
+}
+
+variable "workspace_username" {
+  description = "Username created inside the optional workspace container."
+  type        = string
+  default     = "user"
+
+  validation {
+    condition = (
+      can(regex("^[a-z_][a-z0-9_-]{0,31}$", var.workspace_username)) &&
+      var.workspace_username != "root"
+    )
+    error_message = "workspace_username must be a valid Linux username and cannot be \"root\"."
+  }
+}
+
+variable "workspace_password" {
+  description = "Password for SSH access to the optional workspace container. Required when enabled_services includes workspace."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition = (
+      !contains(var.enabled_services, "workspace") ||
+      trimspace(var.workspace_password) != ""
+    )
+    error_message = "workspace_password must be set when enabled_services includes workspace."
+  }
+}
+
+variable "workspace_ssh_host_port" {
+  description = "Host port mapped to SSH inside the optional workspace container. Do not open this port in provider firewalls."
+  type        = number
+  default     = 2222
+
+  validation {
+    condition     = var.workspace_ssh_host_port >= 1024 && var.workspace_ssh_host_port <= 65535
+    error_message = "workspace_ssh_host_port must be between 1024 and 65535."
+  }
+}
+
+variable "workspace_ssh_public_keys" {
+  description = "OpenSSH public keys authorized for the optional workspace user. Supply public key strings only, never private keys or local agent/socket paths."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for key in var.workspace_ssh_public_keys : can(regex("^(ssh-(rsa|ed25519)|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh.com|sk-ecdsa-sha2-nistp256@openssh.com)\\s+\\S+(\\s+.*)?$", trimspace(key)))
+    ])
+    error_message = "workspace_ssh_public_keys entries must be OpenSSH public key strings, not private keys, file paths, or agent socket paths."
   }
 }
 
@@ -598,6 +651,17 @@ variable "tailscale_enabled" {
   description = "Install Tailscale for private access to selected AgentStack UIs. Strongly recommended — disabling this leaves UIs accessible only via SSH tunnel unless public domains are enabled."
   type        = bool
   default     = true
+}
+
+variable "tailscale_mode" {
+  description = "How to run Tailscale when enabled. sidecar preserves the existing Docker sidecar; host installs and manages tailscaled directly on the VM."
+  type        = string
+  default     = "sidecar"
+
+  validation {
+    condition     = contains(["sidecar", "host"], var.tailscale_mode)
+    error_message = "tailscale_mode must be one of: sidecar, host."
+  }
 }
 
 variable "tailscale_auth_key" {

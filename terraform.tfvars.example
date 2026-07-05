@@ -157,6 +157,16 @@ enabled_services = [
   "openclaw",
   "hermes",
   "n8n",
+  # "workspace",
+]
+
+# Optional Codex workspace container. Add "workspace" above to enable.
+# Password is used only for SSH into the workspace container over Tailscale.
+workspace_username      = "user"
+workspace_password      = ""
+workspace_ssh_host_port = 2222
+workspace_ssh_public_keys = [
+  # "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExamplePublicKeyOnly user@example.com",
 ]
 
 # Hermes Agent runtime.
@@ -207,4 +217,5 @@ ui_auth_password = "" # blank = Terraform auto-generates
 # Use a reusable key so re-deployments don't require a new key each time.
 
 tailscale_enabled  = true
+tailscale_mode     = "sidecar" # sidecar | host
 tailscale_auth_key = "tskey-auth-..."

@@ -32,6 +32,12 @@ require_file agent-stack-migrate-layout
 require_file agent-stack.service
 require_file openclaw.service
 require_file enabled-services.json
+require_file workspace.env
+require_file host-tailscale-bootstrap.sh
+require_file workspace.Dockerfile
+require_file workspace-entrypoint.sh
+require_file agent-stack-diagnostics
+require_file agent-stack-diagnostics-ssh
 
 echo "[runtime] applying AgentStack runtime checksum=$checksum"
 
@@ -129,6 +135,80 @@ sync_openai_codex_auth() {
   chmod 0600 "$app/codex/auth.json"
 }
 
+install_workspace_diagnostics_bridge() {
+  if [ "${workspace_enabled}" != "true" ]; then
+    echo "[workspace] Diagnostics bridge skipped (workspace disabled)."
+    return 0
+  fi
+
+  local diag_user="agent-stack-diagnostics"
+  local diag_home="/var/lib/agent-stack-diagnostics"
+  local workspace_home="$app/data/workspace/home"
+  local workspace_ssh="$workspace_home/.ssh"
+  local diag_key="$workspace_ssh/agent_stack_diagnostics"
+
+  install -m 0755 "$staging/agent-stack-diagnostics" /usr/local/bin/agent-stack-diagnostics
+  install -m 0755 "$staging/agent-stack-diagnostics-ssh" /usr/local/bin/agent-stack-diagnostics-ssh
+
+  if ! id "$diag_user" >/dev/null 2>&1; then
+    useradd --system --home-dir "$diag_home" --create-home --shell /bin/bash "$diag_user"
+  fi
+
+  install -d -m 0700 -o "$diag_user" -g "$diag_user" "$diag_home/.ssh"
+  install -d -m 0700 -o 1000 -g 1000 "$workspace_ssh"
+
+  if [ ! -f "$diag_key" ]; then
+    ssh-keygen -t ed25519 -N "" -f "$diag_key" -C "agent-stack-workspace-diagnostics"
+  fi
+  chown 1000:1000 "$diag_key" "$diag_key.pub"
+  chmod 0600 "$diag_key"
+  chmod 0644 "$diag_key.pub"
+
+  local pubkey
+  pubkey="$(cat "$diag_key.pub")"
+  printf 'command="/usr/local/bin/agent-stack-diagnostics-ssh",no-agent-forwarding,no-X11-forwarding,no-pty,no-user-rc,no-port-forwarding %s\n' "$pubkey" > "$diag_home/.ssh/authorized_keys"
+  chown "$diag_user:$diag_user" "$diag_home/.ssh/authorized_keys"
+  chmod 0600 "$diag_home/.ssh/authorized_keys"
+
+  cat >/etc/sudoers.d/agent-stack-diagnostics <<'EOF'
+agent-stack-diagnostics ALL=(root) NOPASSWD: /usr/local/bin/agent-stack-diagnostics
+agent-stack-diagnostics ALL=(root) NOPASSWD: /usr/local/bin/agent-stack-diagnostics *
+EOF
+  chmod 0440 /etc/sudoers.d/agent-stack-diagnostics
+
+  echo "[workspace] Diagnostics bridge installed for workspace container."
+}
+
+install_workspace_runtime() {
+  if [ "${workspace_enabled}" != "true" ]; then
+    echo "[workspace] Skipped (workspace disabled)."
+    return 0
+  fi
+
+  echo "[workspace] Installing workspace runtime files..."
+  install -d -m 0755 "$app/data/workspace"
+  install -d -m 0755 "$app/data/workspace/home"
+  install -m 0644 "$staging/workspace.Dockerfile" "$app/workspace.Dockerfile"
+  install -m 0755 "$staging/workspace-entrypoint.sh" "$app/workspace-entrypoint.sh"
+  install_workspace_diagnostics_bridge
+
+  echo "[workspace] Building local workspace image..."
+  docker build -t agent-stack-workspace:local -f "$app/workspace.Dockerfile" "$app"
+}
+
+configure_host_tailscale() {
+  if [ "${tailscale_host_enabled}" != "true" ]; then
+    echo "[tailscale-host] Skipped (tailscale_mode=${tailscale_mode})."
+    return 0
+  fi
+
+  echo "[tailscale-host] Configuring host-level Tailscale..."
+  TAILSCALE_AUTH_KEY="$(env_file_value "$app/.env" TAILSCALE_AUTH_KEY)" \
+  TAILSCALE_HOSTNAME="$(env_file_value "$app/.env" TAILSCALE_HOSTNAME)" \
+  OPENCLAW_ENABLED="$(env_file_value "$app/.env" OPENCLAW_ENABLED)" \
+    "$app/host-tailscale-bootstrap.sh"
+}
+
 wait_agent_stack_initial_restart() {
   for attempt in $(seq 1 60); do
     if systemctl is-active --quiet agent-stack; then
@@ -156,12 +236,13 @@ docker compose --env-file "$staging/.env" -f "$staging/docker-compose.yml" confi
 
 rm -rf "$previous"
 install -d -m 0700 "$previous"
-for path in docker-compose.yml .env Caddyfile tailscale-bootstrap.sh; do
+for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh workspace.Dockerfile workspace-entrypoint.sh; do
   [ -e "$app/$path" ] && cp -a "$app/$path" "$previous/" || true
 done
 
 install -m 0644 "$staging/docker-compose.yml" "$app/docker-compose.yml"
 install -m 0600 "$staging/.env" "$app/.env"
+install -m 0600 "$staging/workspace.env" "$app/workspace.env"
 if [ -f "$staging/Caddyfile" ]; then
   install -m 0600 "$staging/Caddyfile" "$app/Caddyfile"
 else
@@ -170,6 +251,9 @@ fi
 if [ -f "$staging/tailscale-bootstrap.sh" ]; then
   install -m 0700 "$staging/tailscale-bootstrap.sh" "$app/tailscale-bootstrap.sh"
 fi
+if [ -f "$staging/host-tailscale-bootstrap.sh" ]; then
+  install -m 0700 "$staging/host-tailscale-bootstrap.sh" "$app/host-tailscale-bootstrap.sh"
+fi
 if [ -d "$staging/templates" ]; then
   rm -rf "$app/templates"
   install -d -m 0755 "$app/templates"
@@ -177,6 +261,7 @@ if [ -d "$staging/templates" ]; then
   chmod -R u=rwX,go=rX "$app/templates"
 fi
 sync_openai_codex_auth
+install_workspace_runtime
 
 install -m 0644 "$staging/agent-stack.service" /etc/systemd/system/agent-stack.service
 install -m 0644 "$staging/openclaw.service" /etc/systemd/system/openclaw.service
@@ -188,7 +273,7 @@ fi
 
 systemctl daemon-reload
 systemctl enable agent-stack openclaw
-if grep -q '^TAILSCALE_AUTH_KEY=' "$app/.env"; then
+if [ "${tailscale_sidecar_enabled}" = "true" ] && grep -q '^TAILSCALE_AUTH_KEY=' "$app/.env"; then
   systemctl enable --now agent-stack-tailscale-watchdog.timer || true
 else
   systemctl disable --now agent-stack-tailscale-watchdog.timer 2>/dev/null || true
@@ -201,7 +286,7 @@ if [ "$restart_status" -ne 0 ]; then
 fi
 if ! wait_agent_stack_initial_restart; then
   echo "[runtime] restart did not recover; restoring previous runtime files" >&2
-  for path in docker-compose.yml .env Caddyfile tailscale-bootstrap.sh; do
+  for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh workspace.Dockerfile workspace-entrypoint.sh; do
     if [ -e "$previous/$path" ]; then
       cp -a "$previous/$path" "$app/$path"
     else
@@ -212,6 +297,7 @@ if ! wait_agent_stack_initial_restart; then
   fail "agent-stack restart failed"
 fi
 systemctl start openclaw || true
+configure_host_tailscale
 
 OPENCLAW_CONFIG="$app/data/openclaw/openclaw.json"
 OPENCLAW_ENABLED="${openclaw_enabled}"
@@ -641,7 +727,26 @@ configure_openclaw_channels_and_models() {
 
 read_tailscale_dns() {
   local tailscale_dns=""
-  if ! grep -q '^TAILSCALE_AUTH_KEY=' "$app/.env"; then
+  if [ "${tailscale_host_enabled}" = "true" ]; then
+    echo "[tailscale] Reading host Tailscale status..." >&2
+    for attempt in $(seq 1 40); do
+      if tailscale status --json 2>/dev/null | jq -e '.Self.Online == true' >/dev/null 2>&1; then
+        break
+      fi
+      sleep 3
+    done
+    tailscale_dns="$(tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // empty' || true)"
+    tailscale_dns="$${tailscale_dns%.}"
+    if [ -n "$tailscale_dns" ]; then
+      echo "[tailscale] Host Serve URL: https://$tailscale_dns" >&2
+    else
+      echo "[tailscale] WARNING: Host Tailscale DNS name unavailable." >&2
+    fi
+    printf '%s' "$tailscale_dns"
+    return 0
+  fi
+
+  if [ "${tailscale_sidecar_enabled}" != "true" ]; then
     printf '%s' "$tailscale_dns"
     return 0
   fi
@@ -680,7 +785,7 @@ refresh_openclaw_gateway_config() {
   echo "[openclaw] Refreshing gateway token and gateway.controlUi.allowedOrigins..."
   local tailscale_dns="$1"
   local project_origin=""
-  if grep -q '^TAILSCALE_AUTH_KEY=' "$app/.env"; then
+  if [ "${tailscale_enabled}" = "true" ]; then
     project_origin="https://${project_name}"
   fi
   local public_openclaw_origin=""
@@ -775,11 +880,14 @@ echo "========================================================"
 echo " AgentStack runtime apply complete  $(date)"
 echo " Services: ${enabled_services_json}"
 if [ "$OPENCLAW_ENABLED" = "true" ]; then
-  if [ -n "${project_name}" ] && grep -q '^TAILSCALE_AUTH_KEY=' "$app/.env"; then
-    echo " OpenClaw: https://${project_name} (via Tailscale Serve sidecar)"
+  if [ -n "${project_name}" ] && [ "${tailscale_enabled}" = "true" ]; then
+    echo " OpenClaw: https://${project_name} (via Tailscale Serve, mode=${tailscale_mode})"
   else
     echo " OpenClaw: ssh -L 18789:127.0.0.1:18789 ${admin_username}@<IP>"
   fi
+fi
+if [ "${workspace_enabled}" = "true" ]; then
+  echo " Workspace SSH: ssh -p ${workspace_ssh_host_port} ${workspace_username}@${project_name} (via Tailscale)"
 fi
 echo " Logs: journalctl -u agent-stack -f"
 echo "========================================================"

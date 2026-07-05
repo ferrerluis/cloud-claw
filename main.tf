@@ -57,6 +57,9 @@ locals {
   openclaw_enabled               = contains(var.enabled_services, "openclaw")
   hermes_enabled                 = contains(var.enabled_services, "hermes")
   n8n_enabled                    = contains(var.enabled_services, "n8n")
+  workspace_enabled              = contains(var.enabled_services, "workspace")
+  tailscale_sidecar_enabled      = var.tailscale_enabled && var.tailscale_mode == "sidecar"
+  tailscale_host_enabled         = var.tailscale_enabled && var.tailscale_mode == "host"
   local_postgres_enabled         = local.n8n_enabled && var.n8n_database_mode == "local_postgres"
   public_base_domain             = trimspace(var.base_domain)
   resolved_openclaw_domain       = trimspace(var.openclaw_domain) != "" ? trimspace(var.openclaw_domain) : (local.public_base_domain != "" ? "openclaw.${local.public_base_domain}" : "")
@@ -427,30 +430,50 @@ locals {
     ui_auth_mode                         = var.ui_auth_mode
     ui_auth_username                     = var.ui_auth_username
     ui_auth_password                     = local.resolved_ui_auth_password
+    workspace_enabled                    = local.workspace_enabled
+    workspace_username                   = var.workspace_username
+    workspace_password                   = var.workspace_password
+    workspace_ssh_host_port              = var.workspace_ssh_host_port
+    workspace_ssh_public_keys_base64     = base64encode(join("\n", [for key in var.workspace_ssh_public_keys : trimspace(key)]))
+    tailscale_mode                       = var.tailscale_mode
+    tailscale_sidecar_enabled            = local.tailscale_sidecar_enabled
+    tailscale_host_enabled               = local.tailscale_host_enabled
   }
 
-  runtime_docker_compose      = templatefile("${path.module}/modules/common/templates/runtime/docker-compose.yml.tpl", local.runtime_template_vars)
-  runtime_env                 = templatefile("${path.module}/modules/common/templates/runtime/env.tpl", local.runtime_template_vars)
-  runtime_caddyfile_template  = templatefile("${path.module}/modules/common/templates/runtime/Caddyfile.template.tpl", local.runtime_template_vars)
-  runtime_tailscale_bootstrap = templatefile("${path.module}/modules/common/templates/runtime/tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
-  runtime_layout_migrator     = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-migrate-layout.sh.tpl", local.runtime_template_vars)
-  runtime_mount_volume        = templatefile("${path.module}/modules/common/templates/runtime/mount-agent-stack-volume.sh.tpl", local.runtime_template_vars)
-  runtime_installer           = templatefile("${path.module}/modules/common/templates/runtime/install-agent-stack.sh.tpl", local.runtime_template_vars)
-  runtime_agent_stack_service = templatefile("${path.module}/modules/common/templates/runtime/agent-stack.service.tpl", local.runtime_template_vars)
-  runtime_openclaw_service    = templatefile("${path.module}/modules/common/templates/runtime/openclaw.service.tpl", local.runtime_template_vars)
-  runtime_watchdog            = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.sh.tpl", local.runtime_template_vars)
-  runtime_watchdog_service    = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.service.tpl", local.runtime_template_vars)
-  runtime_watchdog_timer      = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.timer.tpl", local.runtime_template_vars)
-  runtime_enabled_services    = jsonencode(var.enabled_services)
-  runtime_starter_soul        = file("${path.module}/modules/common/templates/starter/SOUL.${var.starter_soul_profile}.md")
-  runtime_starter_agents      = file("${path.module}/modules/common/templates/starter/AGENTS.default.md")
-  runtime_starter_tools       = file("${path.module}/modules/common/templates/starter/TOOLS.default.md")
-  runtime_starter_user        = file("${path.module}/modules/common/templates/starter/USER.default.md")
+  runtime_docker_compose         = templatefile("${path.module}/modules/common/templates/runtime/docker-compose.yml.tpl", local.runtime_template_vars)
+  runtime_env                    = templatefile("${path.module}/modules/common/templates/runtime/env.tpl", local.runtime_template_vars)
+  runtime_workspace_env          = templatefile("${path.module}/modules/common/templates/runtime/workspace.env.tpl", local.runtime_template_vars)
+  runtime_caddyfile_template     = templatefile("${path.module}/modules/common/templates/runtime/Caddyfile.template.tpl", local.runtime_template_vars)
+  runtime_tailscale_bootstrap    = templatefile("${path.module}/modules/common/templates/runtime/tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
+  runtime_host_tailscale         = templatefile("${path.module}/modules/common/templates/runtime/host-tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
+  runtime_workspace_dockerfile   = templatefile("${path.module}/modules/common/templates/runtime/workspace.Dockerfile.tpl", local.runtime_template_vars)
+  runtime_workspace_entrypoint   = templatefile("${path.module}/modules/common/templates/runtime/workspace-entrypoint.sh.tpl", local.runtime_template_vars)
+  runtime_diagnostics_helper     = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-diagnostics.sh.tpl", local.runtime_template_vars)
+  runtime_diagnostics_ssh_helper = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-diagnostics-ssh.sh.tpl", local.runtime_template_vars)
+  runtime_layout_migrator        = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-migrate-layout.sh.tpl", local.runtime_template_vars)
+  runtime_mount_volume           = templatefile("${path.module}/modules/common/templates/runtime/mount-agent-stack-volume.sh.tpl", local.runtime_template_vars)
+  runtime_installer              = templatefile("${path.module}/modules/common/templates/runtime/install-agent-stack.sh.tpl", local.runtime_template_vars)
+  runtime_agent_stack_service    = templatefile("${path.module}/modules/common/templates/runtime/agent-stack.service.tpl", local.runtime_template_vars)
+  runtime_openclaw_service       = templatefile("${path.module}/modules/common/templates/runtime/openclaw.service.tpl", local.runtime_template_vars)
+  runtime_watchdog               = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.sh.tpl", local.runtime_template_vars)
+  runtime_watchdog_service       = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.service.tpl", local.runtime_template_vars)
+  runtime_watchdog_timer         = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.timer.tpl", local.runtime_template_vars)
+  runtime_enabled_services       = jsonencode(var.enabled_services)
+  runtime_starter_soul           = file("${path.module}/modules/common/templates/starter/SOUL.${var.starter_soul_profile}.md")
+  runtime_starter_agents         = file("${path.module}/modules/common/templates/starter/AGENTS.default.md")
+  runtime_starter_tools          = file("${path.module}/modules/common/templates/starter/TOOLS.default.md")
+  runtime_starter_user           = file("${path.module}/modules/common/templates/starter/USER.default.md")
   runtime_artifact_checksum = nonsensitive(sha256(join("\n---agent-stack-artifact---\n", [
     nonsensitive(local.runtime_docker_compose),
     nonsensitive(local.runtime_env),
+    nonsensitive(local.runtime_workspace_env),
     nonsensitive(local.runtime_caddyfile_template),
     nonsensitive(local.runtime_tailscale_bootstrap),
+    nonsensitive(local.runtime_host_tailscale),
+    nonsensitive(local.runtime_workspace_dockerfile),
+    nonsensitive(local.runtime_workspace_entrypoint),
+    nonsensitive(local.runtime_diagnostics_helper),
+    nonsensitive(local.runtime_diagnostics_ssh_helper),
     nonsensitive(local.runtime_layout_migrator),
     nonsensitive(local.runtime_mount_volume),
     nonsensitive(local.runtime_installer),
@@ -515,6 +538,11 @@ resource "terraform_data" "runtime_apply" {
   }
 
   provisioner "file" {
+    content     = local.runtime_workspace_env
+    destination = "${local.runtime_staging_dir}/workspace.env"
+  }
+
+  provisioner "file" {
     content     = local.runtime_caddyfile_template
     destination = "${local.runtime_staging_dir}/Caddyfile.template"
   }
@@ -522,6 +550,31 @@ resource "terraform_data" "runtime_apply" {
   provisioner "file" {
     content     = local.runtime_tailscale_bootstrap
     destination = "${local.runtime_staging_dir}/tailscale-bootstrap.sh"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_host_tailscale
+    destination = "${local.runtime_staging_dir}/host-tailscale-bootstrap.sh"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_workspace_dockerfile
+    destination = "${local.runtime_staging_dir}/workspace.Dockerfile"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_workspace_entrypoint
+    destination = "${local.runtime_staging_dir}/workspace-entrypoint.sh"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_diagnostics_helper
+    destination = "${local.runtime_staging_dir}/agent-stack-diagnostics"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_diagnostics_ssh_helper
+    destination = "${local.runtime_staging_dir}/agent-stack-diagnostics-ssh"
   }
 
   provisioner "file" {
@@ -597,8 +650,8 @@ resource "terraform_data" "runtime_apply" {
   provisioner "remote-exec" {
     inline = [
       "chmod 0700 ${local.runtime_staging_dir}",
-      "chmod 0600 ${local.runtime_staging_dir}/.env ${local.runtime_staging_dir}/openai_codex_auth_json_base64",
-      "chmod 0755 ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir}/agent-stack-migrate-layout ${local.runtime_staging_dir}/mount-agent-stack-volume.sh ${local.runtime_staging_dir}/tailscale-bootstrap.sh ${local.runtime_staging_dir}/agent-stack-tailscale-watchdog",
+      "chmod 0600 ${local.runtime_staging_dir}/.env ${local.runtime_staging_dir}/workspace.env ${local.runtime_staging_dir}/openai_codex_auth_json_base64",
+      "chmod 0755 ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir}/agent-stack-migrate-layout ${local.runtime_staging_dir}/mount-agent-stack-volume.sh ${local.runtime_staging_dir}/tailscale-bootstrap.sh ${local.runtime_staging_dir}/host-tailscale-bootstrap.sh ${local.runtime_staging_dir}/workspace-entrypoint.sh ${local.runtime_staging_dir}/agent-stack-diagnostics ${local.runtime_staging_dir}/agent-stack-diagnostics-ssh ${local.runtime_staging_dir}/agent-stack-tailscale-watchdog",
       "sudo bash ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir} ${local.runtime_artifact_checksum}",
     ]
   }

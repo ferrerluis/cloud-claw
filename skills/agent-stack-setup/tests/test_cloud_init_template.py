@@ -57,6 +57,12 @@ class RuntimeTemplateTest(unittest.TestCase):
         cls.installer = (RUNTIME_DIR / "install-agent-stack.sh.tpl").read_text(encoding="utf-8")
         cls.agent_stack_service = (RUNTIME_DIR / "agent-stack.service.tpl").read_text(encoding="utf-8")
         cls.openclaw_service = (RUNTIME_DIR / "openclaw.service.tpl").read_text(encoding="utf-8")
+        cls.workspace_dockerfile = (RUNTIME_DIR / "workspace.Dockerfile.tpl").read_text(encoding="utf-8")
+        cls.workspace_entrypoint = (RUNTIME_DIR / "workspace-entrypoint.sh.tpl").read_text(encoding="utf-8")
+        cls.workspace_env = (RUNTIME_DIR / "workspace.env.tpl").read_text(encoding="utf-8")
+        cls.host_tailscale = (RUNTIME_DIR / "host-tailscale-bootstrap.sh.tpl").read_text(encoding="utf-8")
+        cls.diagnostics = (RUNTIME_DIR / "agent-stack-diagnostics.sh.tpl").read_text(encoding="utf-8")
+        cls.diagnostics_ssh = (RUNTIME_DIR / "agent-stack-diagnostics-ssh.sh.tpl").read_text(encoding="utf-8")
 
     def test_runtime_includes_stack_services_and_private_ports(self) -> None:
         self.assertIn("openclaw:", self.compose)
@@ -76,6 +82,16 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("/opt/agent-stack/data/caddy/data:/data", self.compose)
         self.assertNotIn("/opt/agent-stack/data/services/hermes:/opt/data", self.compose)
 
+    def test_runtime_includes_optional_workspace_without_docker_socket(self) -> None:
+        self.assertIn("%{ if workspace_enabled }", self.compose)
+        self.assertIn("workspace:", self.compose)
+        self.assertIn("image: agent-stack-workspace:local", self.compose)
+        self.assertIn("env_file: workspace.env", self.compose)
+        self.assertIn('${workspace_ssh_host_port}:22', self.compose)
+        self.assertIn("/opt/agent-stack/data/workspace/home:/home/${workspace_username}", self.compose)
+        self.assertIn("host.docker.internal:host-gateway", self.compose)
+        self.assertNotIn("/var/run/docker.sock", self.compose)
+
     def test_caddy_protects_ui_and_allows_webhooks(self) -> None:
         self.assertIn("basic_auth", self.caddy)
         self.assertIn("__UI_AUTH_HASH__", self.caddy)
@@ -83,6 +99,7 @@ class RuntimeTemplateTest(unittest.TestCase):
 
     def test_systemd_uses_agent_stack_with_openclaw_compatibility(self) -> None:
         self.assertIn("ExecStart=/usr/bin/docker compose up --remove-orphans", self.agent_stack_service)
+        self.assertIn("docker compose pull --quiet --ignore-buildable || true", self.agent_stack_service)
         self.assertIn("ExecStart=/bin/systemctl start agent-stack.service", self.openclaw_service)
 
     def test_runtime_installer_keeps_openclaw_bootstrap_behavior(self) -> None:
@@ -95,12 +112,17 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("Refreshing gateway token and gateway.controlUi.allowedOrigins", self.installer)
         self.assertIn(".last-apply.json", self.installer)
         self.assertIn("restoring previous runtime files", self.installer)
+        self.assertIn("install_workspace_runtime", self.installer)
+        self.assertIn("install_workspace_diagnostics_bridge", self.installer)
+        self.assertIn("configure_host_tailscale", self.installer)
+        self.assertIn("host-tailscale-bootstrap.sh", self.installer)
 
     def test_runtime_stages_sensitive_files_with_private_permissions(self) -> None:
         main_tf = MAIN_TF.read_text(encoding="utf-8")
         self.assertIn("install -d -m 0700", main_tf)
         self.assertIn("chmod 0700 ${local.runtime_staging_dir}", main_tf)
         self.assertIn("chmod 0600 ${local.runtime_staging_dir}/.env", main_tf)
+        self.assertIn("${local.runtime_staging_dir}/workspace.env", main_tf)
         self.assertIn("${local.runtime_staging_dir}/openai_codex_auth_json_base64", main_tf)
 
     def test_runtime_templates_include_tailscale_watchdog_units(self) -> None:
@@ -111,6 +133,39 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("serve status", watchdog)
         self.assertIn("agent-stack-tailscale-watchdog", watchdog_service)
         self.assertIn("OnBootSec", watchdog_timer)
+
+    def test_workspace_image_installs_codex_and_ssh_tools(self) -> None:
+        self.assertIn("FROM ubuntu:24.04", self.workspace_dockerfile)
+        for package in ["openssh-server", "git", "curl", "jq", "bubblewrap"]:
+            self.assertIn(package, self.workspace_dockerfile)
+        self.assertIn("https://chatgpt.com/codex/install.sh", self.workspace_dockerfile)
+        self.assertIn("CODEX_INSTALL_DIR=/usr/local/bin", self.workspace_dockerfile)
+        self.assertIn("CODEX_HOME=/opt/codex", self.workspace_dockerfile)
+        self.assertIn("WORKSPACE_PASSWORD is required", self.workspace_entrypoint)
+        self.assertIn("PasswordAuthentication yes", self.workspace_entrypoint)
+        self.assertIn("WORKSPACE_AUTHORIZED_KEYS_BASE64", self.workspace_entrypoint)
+        self.assertIn("AuthorizedKeysFile .ssh/authorized_keys", self.workspace_entrypoint)
+        self.assertIn("PubkeyAuthentication $pubkey_auth", self.workspace_entrypoint)
+        self.assertIn("export CODEX_HOME=", self.workspace_entrypoint)
+        self.assertIn("WORKSPACE_AUTHORIZED_KEYS_BASE64=${workspace_ssh_public_keys_base64}", self.workspace_env)
+        self.assertIn("CODEX_HOME=/home/${workspace_username}/.codex", self.workspace_env)
+
+    def test_workspace_diagnostics_bridge_is_limited_and_forced_command(self) -> None:
+        self.assertIn("agent-stack-diagnostics@host.docker.internal", self.workspace_entrypoint)
+        self.assertIn('command="/usr/local/bin/agent-stack-diagnostics-ssh"', self.installer)
+        self.assertIn("SSH_ORIGINAL_COMMAND", self.diagnostics_ssh)
+        self.assertIn("sudo -n /usr/local/bin/agent-stack-diagnostics", self.diagnostics_ssh)
+        self.assertIn("openclaw|hermes|n8n|postgres|caddy|workspace", self.diagnostics)
+        self.assertIn("tailscale|agent-stack", self.diagnostics)
+        self.assertIn("show_container_inspect", self.diagnostics)
+        self.assertNotIn("docker.sock", self.diagnostics)
+
+    def test_host_tailscale_mode_disables_sidecar_and_serves_openclaw(self) -> None:
+        self.assertIn("%{ if tailscale_sidecar_enabled }", self.compose)
+        self.assertIn("[ \"${tailscale_sidecar_enabled}\" = \"true\" ]", self.installer)
+        self.assertIn("[ \"${tailscale_host_enabled}\" = \"true\" ]", self.installer)
+        self.assertIn("tailscale logout || true", self.host_tailscale)
+        self.assertIn("tailscale serve --bg 127.0.0.1:18789", self.host_tailscale)
 
 
 class RuntimeProvisioningContractTest(unittest.TestCase):

@@ -49,6 +49,7 @@ variables {
   ui_auth_password              = "ui-password-agent-stack-tests"
   enabled_services              = ["openclaw", "hermes", "n8n"]
   tailscale_enabled             = true
+  tailscale_mode                = "sidecar"
   tailscale_auth_key            = "tskey-auth-agent-stack-tests"
   openai_codex_auth_json_base64 = ""
 }
@@ -62,7 +63,7 @@ run "tailscale_private_outputs" {
   }
 
   assert {
-    condition     = strcontains(output.dashboard_url, "https://agent-stack") && strcontains(output.dashboard_url, "Tailscale Serve sidecar")
+    condition     = strcontains(output.dashboard_url, "https://agent-stack") && strcontains(output.dashboard_url, "mode=sidecar")
     error_message = "Private Tailscale dashboard URL should point at the AgentStack Tailscale Serve name."
   }
 
@@ -72,8 +73,42 @@ run "tailscale_private_outputs" {
   }
 
   assert {
-    condition     = strcontains(output.tailscale_note, "Tailscale is enabled.")
+    condition     = strcontains(output.tailscale_note, "Tailscale is enabled in sidecar mode.")
     error_message = "Tailscale-enabled deployments should surface the Tailscale handoff note."
+  }
+}
+
+run "workspace_host_outputs" {
+  command   = plan
+  state_key = "workspace-host-outputs"
+
+  variables {
+    cloud_provider          = "hetzner"
+    enabled_services        = ["openclaw", "workspace"]
+    workspace_username      = "ferrerluis"
+    workspace_password      = "workspace-password-agent-stack-tests"
+    workspace_ssh_host_port = 2222
+    tailscale_mode          = "host"
+  }
+
+  assert {
+    condition     = output.workspace_ssh_command == "ssh -p 2222 ferrerluis@agent-stack"
+    error_message = "Workspace SSH command should use the configured username, host port, and Tailscale device name."
+  }
+
+  assert {
+    condition     = output.workspace_codex_login_command == "ssh -p 2222 ferrerluis@agent-stack 'codex login --device-auth'"
+    error_message = "Workspace Codex login command should use device auth inside the workspace."
+  }
+
+  assert {
+    condition     = strcontains(output.workspace_note, "no Docker socket is mounted") && !strcontains(output.workspace_note, "workspace-password-agent-stack-tests")
+    error_message = "Workspace note should describe the safety boundary without exposing the workspace password."
+  }
+
+  assert {
+    condition     = strcontains(output.dashboard_url, "mode=host")
+    error_message = "Host Tailscale mode should be visible in access outputs."
   }
 }
 

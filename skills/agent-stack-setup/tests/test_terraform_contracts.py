@@ -92,6 +92,20 @@ class TerraformContractTest(unittest.TestCase):
         self.assertEqual(variable_default(self.variables_tf, "openclaw_health_retries"), "8")
         self.assertEqual(variable_default(self.variables_tf, "openai_auth_mode"), '"api_key"')
         self.assertEqual(variable_default(self.variables_tf, "postgres_image"), '"postgres:17-alpine"')
+        self.assertEqual(variable_default(self.variables_tf, "workspace_username"), '"user"')
+        self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_host_port"), "2222")
+        self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_public_keys"), "[]")
+        self.assertEqual(variable_default(self.variables_tf, "tailscale_mode"), '"sidecar"')
+
+    def test_workspace_contract_is_optional_and_sensitive(self) -> None:
+        enabled_services = extract_named_block(self.variables_tf, "variable", "enabled_services")
+        workspace_password = extract_named_block(self.variables_tf, "variable", "workspace_password")
+        workspace_ssh_public_keys = extract_named_block(self.variables_tf, "variable", "workspace_ssh_public_keys")
+        self.assertIn('"workspace"', enabled_services)
+        self.assertIn("workspace_password must be set when enabled_services includes workspace.", workspace_password)
+        self.assertIn("sensitive   = true", workspace_password)
+        self.assertIn("must be OpenSSH public key strings", workspace_ssh_public_keys)
+        self.assertNotIn("sensitive   = true", workspace_ssh_public_keys)
 
 
 if __name__ == "__main__":
