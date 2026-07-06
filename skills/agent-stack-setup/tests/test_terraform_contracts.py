@@ -98,6 +98,10 @@ class TerraformContractTest(unittest.TestCase):
         self.assertEqual(variable_default(self.variables_tf, "workspace_username"), '"user"')
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_host_port"), "2222")
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_public_keys"), "[]")
+        self.assertEqual(variable_default(self.variables_tf, "vpn_enabled"), "false")
+        self.assertEqual(variable_default(self.variables_tf, "vpn_provider"), '"nordvpn_openvpn"')
+        self.assertEqual(variable_default(self.variables_tf, "vpn_bypass_cidrs"), "[]")
+        self.assertEqual(variable_default(self.variables_tf, "vpn_disable_ipv6"), "true")
         self.assertEqual(variable_default(self.variables_tf, "tailscale_mode"), '"sidecar"')
 
     def test_admin_password_contract_is_disabled_by_default_and_sensitive(self) -> None:
@@ -119,6 +123,19 @@ class TerraformContractTest(unittest.TestCase):
         self.assertIn("sensitive   = true", workspace_password)
         self.assertIn("must be OpenSSH public key strings", workspace_ssh_public_keys)
         self.assertNotIn("sensitive   = true", workspace_ssh_public_keys)
+
+    def test_host_vpn_contract_is_disabled_by_default_and_sensitive(self) -> None:
+        vpn_enabled = extract_named_block(self.variables_tf, "variable", "vpn_enabled")
+        vpn_provider = extract_named_block(self.variables_tf, "variable", "vpn_provider")
+        vpn_username = extract_named_block(self.variables_tf, "variable", "vpn_username")
+        vpn_password = extract_named_block(self.variables_tf, "variable", "vpn_password")
+        vpn_bypass_cidrs = extract_named_block(self.variables_tf, "variable", "vpn_bypass_cidrs")
+        self.assertIn("default     = false", vpn_enabled)
+        self.assertIn("nordvpn_openvpn", vpn_provider)
+        self.assertIn("sensitive   = true", vpn_username)
+        self.assertIn("sensitive   = true", vpn_password)
+        self.assertIn("at least one access CIDR", vpn_bypass_cidrs)
+        self.assertIn("IPv4 CIDRs", vpn_bypass_cidrs)
 
 
 if __name__ == "__main__":

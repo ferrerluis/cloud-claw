@@ -8,10 +8,10 @@ usage() {
   cat <<'EOF'
 Usage:
   agent-stack-diagnostics status
-  agent-stack-diagnostics health [openclaw|workspace|tailscale]
-  agent-stack-diagnostics logs <openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|agent-stack> [lines]
-  agent-stack-diagnostics inspect <openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|agent-stack>
-  agent-stack-diagnostics restart <openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|agent-stack>
+  agent-stack-diagnostics health [openclaw|workspace|tailscale|vpn]
+  agent-stack-diagnostics logs <openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|vpn|agent-stack> [lines]
+  agent-stack-diagnostics inspect <openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|vpn|agent-stack>
+  agent-stack-diagnostics restart <openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|vpn|agent-stack>
 EOF
 }
 
@@ -24,7 +24,7 @@ compose_service() {
 
 managed_service() {
   case "$1" in
-    openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|agent-stack) return 0 ;;
+    openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|vpn|agent-stack) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -68,6 +68,7 @@ show_status() {
   echo "== systemd =="
   systemctl is-active agent-stack 2>/dev/null || true
   systemctl is-active tailscaled 2>/dev/null || true
+  systemctl is-active agent-stack-vpn 2>/dev/null || true
   echo
   echo "== containers =="
   docker compose -f "$compose" ps 2>/dev/null || true
@@ -77,6 +78,17 @@ show_status() {
     tailscale status --json 2>/dev/null | jq -r '.Self.Online, .Self.DNSName, (.Self.TailscaleIPs[]? // empty), (.Health[]? // empty)' || tailscale status || true
   else
     echo "tailscale command not installed"
+  fi
+  echo
+  echo "== vpn =="
+  if systemctl list-unit-files agent-stack-vpn.service >/dev/null 2>&1; then
+    systemctl is-active agent-stack-vpn 2>/dev/null || true
+    ip -4 route show default 2>/dev/null || true
+    ip -o link show 2>/dev/null | grep -E ': tun[0-9]+@?' || true
+    curl -fsS --max-time 8 "${vpn_healthcheck_url}" 2>/dev/null || true
+    echo
+  else
+    echo "agent-stack-vpn service not installed"
   fi
 }
 
@@ -97,6 +109,12 @@ show_health() {
         tailscale status --json 2>/dev/null | jq -r '.Self.Online, .Self.DNSName, (.Health[]? // empty)' || true
       fi
       ;;
+    vpn)
+      systemctl is-active agent-stack-vpn 2>/dev/null || true
+      ip -o link show 2>/dev/null | grep -E ': tun[0-9]+@?' || true
+      curl -fsS --max-time 8 "${vpn_healthcheck_url}" 2>/dev/null || true
+      echo
+      ;;
     *)
       local cid
       cid="$(container_id "$service")"
@@ -113,6 +131,9 @@ show_logs() {
   case "$service" in
     tailscale)
       journalctl -u tailscaled --no-pager -n "$lines" || true
+      ;;
+    vpn)
+      journalctl -u agent-stack-vpn --no-pager -n "$lines" || true
       ;;
     agent-stack)
       journalctl -u agent-stack --no-pager -n "$lines" || true
@@ -134,6 +155,11 @@ show_inspect() {
         tailscale status --json 2>/dev/null || true
       fi
       ;;
+    vpn)
+      systemctl status --no-pager agent-stack-vpn || true
+      ip -4 route show || true
+      ip -o addr show || true
+      ;;
     agent-stack)
       systemctl status --no-pager agent-stack || true
       ;;
@@ -150,6 +176,9 @@ restart_service() {
   case "$service" in
     tailscale)
       systemctl restart tailscaled
+      ;;
+    vpn)
+      systemctl restart agent-stack-vpn
       ;;
     agent-stack)
       systemctl restart agent-stack

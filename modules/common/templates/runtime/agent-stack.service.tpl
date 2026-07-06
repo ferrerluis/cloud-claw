@@ -2,7 +2,13 @@
 Description=AgentStack
 Documentation=https://github.com/openclaw/openclaw
 Requires=docker.service
+%{ if vpn_enabled }
+Requires=agent-stack-vpn.service
+%{ endif }
 After=docker.service network-online.target
+%{ if vpn_enabled }
+After=agent-stack-vpn.service
+%{ endif }
 
 [Service]
 Type=simple

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import re
 import sys
@@ -300,6 +301,14 @@ def provider_from_model_ref(model_ref: str) -> str:
     return route
 
 
+def is_ipv4_cidr(value: str) -> bool:
+    try:
+        ipaddress.IPv4Network(value, strict=False)
+    except ValueError:
+        return False
+    return "/" in value
+
+
 def build_values(specs: list[VariableSpec], answers: dict[str, Any]) -> dict[str, Any]:
     known_names = {spec.name for spec in specs}
     unknown_names = sorted(name for name in answers if name not in known_names)
@@ -341,6 +350,21 @@ def build_values(specs: list[VariableSpec], answers: dict[str, Any]) -> dict[str
             "n8n_database_mode = external_postgres requires external_postgres_host, "
             "external_postgres_database, external_postgres_user, and external_postgres_password"
         )
+
+    if resolved["vpn_enabled"]:
+        if resolved["vpn_provider"] != "nordvpn_openvpn":
+            fail("vpn_provider must be nordvpn_openvpn")
+        if not str(resolved["vpn_openvpn_config_url"]).strip().startswith("https://"):
+            fail("vpn_openvpn_config_url must be an https:// URL when vpn_enabled is true")
+        if not str(resolved["vpn_username"]).strip():
+            fail("vpn_username is required when vpn_enabled is true")
+        if not str(resolved["vpn_password"]).strip():
+            fail("vpn_password is required when vpn_enabled is true")
+        if not resolved["vpn_bypass_cidrs"]:
+            fail("vpn_bypass_cidrs must include at least one access CIDR when vpn_enabled is true")
+        invalid_vpn_bypass_cidrs = [cidr for cidr in resolved["vpn_bypass_cidrs"] if not is_ipv4_cidr(str(cidr))]
+        if invalid_vpn_bypass_cidrs:
+            fail(f"vpn_bypass_cidrs must contain IPv4 CIDRs: {', '.join(invalid_vpn_bypass_cidrs)}")
 
     configured_providers = set(resolved["model_providers_enabled"])
     missing_providers = sorted(

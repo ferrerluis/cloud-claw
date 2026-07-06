@@ -62,7 +62,7 @@ Core rules:
    - If apply fails or bootstrap is unhealthy, use `references/verification.md` for targeted recovery and switch to `skills/agent-stack-doctor/SKILL.md` when the issue is no longer setup-specific.
 
 6. Finish with the operator handoff.
-   - Surface the important Terraform outputs: `provider_used`, `instance_public_ip`, `ssh_command`, `repo_ssh_command`, `tailscale_note`, `dashboard_url`, `dashboard_url_with_token_import`, `openclaw_url`, `hermes_url`, `n8n_url`, `n8n_webhook_url`, `bootstrap_log_command`, `repo_bootstrap_log_command`, `pair_latest_command`, `ui_auth_username`, and `whatsapp_login_command`.
+   - Surface the important Terraform outputs: `provider_used`, `instance_public_ip`, `ssh_command`, `repo_ssh_command`, `tailscale_note`, `vpn_note`, `dashboard_url`, `dashboard_url_with_token_import`, `openclaw_url`, `hermes_url`, `n8n_url`, `n8n_webhook_url`, `bootstrap_log_command`, `repo_bootstrap_log_command`, `pair_latest_command`, `ui_auth_username`, and `whatsapp_login_command`.
    - Call out any deferred manual step such as Tailscale login, DNS records, public-domain login, Telegram setup, or WhatsApp QR login.
 
 ## References

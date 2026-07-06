@@ -516,6 +516,97 @@ variable "workspace_ssh_public_keys" {
   }
 }
 
+# ─────────────────────────────────────────────────────────
+# Host VPN
+# ─────────────────────────────────────────────────────────
+
+variable "vpn_enabled" {
+  description = "Install and start a host-level VPN so Docker service egress routes through the VPN tunnel. Disabled by default because route changes can break remote access if bypass CIDRs are wrong."
+  type        = bool
+  default     = false
+}
+
+variable "vpn_provider" {
+  description = "VPN integration to configure. v1 supports NordVPN manual OpenVPN service credentials."
+  type        = string
+  default     = "nordvpn_openvpn"
+
+  validation {
+    condition     = contains(["nordvpn_openvpn"], var.vpn_provider)
+    error_message = "vpn_provider must be \"nordvpn_openvpn\"."
+  }
+}
+
+variable "vpn_openvpn_config_url" {
+  description = "HTTPS URL to a provider OpenVPN .ovpn config file, for example a NordVPN UDP server config from downloads.nordcdn.com."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      !var.vpn_enabled ||
+      can(regex("^https://", trimspace(var.vpn_openvpn_config_url)))
+    )
+    error_message = "vpn_openvpn_config_url must be an https:// URL when vpn_enabled is true."
+  }
+}
+
+variable "vpn_username" {
+  description = "VPN service username. For NordVPN, use the manual service credential username from the Nord Account dashboard, not your account email."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = !var.vpn_enabled || trimspace(var.vpn_username) != ""
+    error_message = "vpn_username is required when vpn_enabled is true."
+  }
+}
+
+variable "vpn_password" {
+  description = "VPN service password. For NordVPN, use the manual service credential password from the Nord Account dashboard, not your account password."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = !var.vpn_enabled || trimspace(var.vpn_password) != ""
+    error_message = "vpn_password is required when vpn_enabled is true."
+  }
+}
+
+variable "vpn_bypass_cidrs" {
+  description = "IPv4 CIDRs that must keep using the original host gateway after the VPN connects, such as your admin SSH /32 or 100.64.0.0/10 for host Tailscale access."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for cidr in var.vpn_bypass_cidrs :
+      can(cidrhost(cidr, 0)) &&
+      can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$", cidr))
+    ])
+    error_message = "vpn_bypass_cidrs must contain IPv4 CIDRs such as \"203.0.113.5/32\"."
+  }
+
+  validation {
+    condition     = !var.vpn_enabled || length(var.vpn_bypass_cidrs) > 0
+    error_message = "vpn_bypass_cidrs must include at least one access CIDR when vpn_enabled is true so SSH/Tailscale access is not routed into the VPN tunnel."
+  }
+}
+
+variable "vpn_disable_ipv6" {
+  description = "Disable host IPv6 while the host VPN is enabled to avoid IPv6 egress bypassing an IPv4-only OpenVPN tunnel."
+  type        = bool
+  default     = true
+}
+
+variable "vpn_healthcheck_url" {
+  description = "URL used by diagnostics to report the current public egress IP when VPN is enabled."
+  type        = string
+  default     = "https://api.ipify.org"
+}
+
 variable "hermes_image" {
   description = "Hermes Agent Docker image."
   type        = string

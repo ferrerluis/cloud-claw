@@ -183,6 +183,29 @@ workspace_ssh_public_keys = [
   # "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExamplePublicKeyOnly user@example.com",
 ]
 
+# ── Optional host VPN egress ────────────────────────────────────
+# Routes host + Docker service egress through a VPN tunnel after provisioning.
+# For NordVPN, use manual OpenVPN service credentials from Nord Account:
+# NordVPN -> Set up NordVPN manually -> service credentials.
+# Do not use your normal Nord account email/password here.
+#
+# Pick a specific Nord .ovpn URL from:
+# https://downloads.nordcdn.com/configs/archives/servers/ovpn.zip
+#
+# You must include at least one bypass CIDR so SSH/Tailscale access to the VPS
+# keeps using the original host gateway after the VPN changes the default route.
+vpn_enabled            = false
+vpn_provider           = "nordvpn_openvpn"
+vpn_openvpn_config_url = ""
+vpn_username           = ""
+vpn_password           = ""
+vpn_bypass_cidrs = [
+  # "203.0.113.5/32", # your current admin IP for public SSH
+  # "100.64.0.0/10",  # optional: host Tailscale IPv4 range
+]
+vpn_disable_ipv6    = true
+vpn_healthcheck_url = "https://api.ipify.org"
+
 # Hermes Agent runtime.
 hermes_image              = "nousresearch/hermes-agent:latest"
 hermes_dashboard_enabled  = true

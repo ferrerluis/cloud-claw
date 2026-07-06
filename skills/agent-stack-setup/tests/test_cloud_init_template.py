@@ -58,6 +58,7 @@ class RuntimeTemplateTest(unittest.TestCase):
         cls.installer = (RUNTIME_DIR / "install-agent-stack.sh.tpl").read_text(encoding="utf-8")
         cls.agent_stack_service = (RUNTIME_DIR / "agent-stack.service.tpl").read_text(encoding="utf-8")
         cls.openclaw_service = (RUNTIME_DIR / "openclaw.service.tpl").read_text(encoding="utf-8")
+        cls.vpn_openvpn = (RUNTIME_DIR / "agent-stack-vpn-openvpn.sh.tpl").read_text(encoding="utf-8")
         cls.workspace_dockerfile = (RUNTIME_DIR / "workspace.Dockerfile.tpl").read_text(encoding="utf-8")
         cls.workspace_entrypoint = (RUNTIME_DIR / "workspace-entrypoint.sh.tpl").read_text(encoding="utf-8")
         cls.workspace_env = (RUNTIME_DIR / "workspace.env.tpl").read_text(encoding="utf-8")
@@ -119,6 +120,8 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("install_workspace_diagnostics_bridge", self.installer)
         self.assertIn("configure_host_tailscale", self.installer)
         self.assertIn("host-tailscale-bootstrap.sh", self.installer)
+        self.assertIn("configure_host_vpn", self.installer)
+        self.assertIn("agent-stack-vpn-openvpn", self.installer)
 
     def test_runtime_admin_password_is_opt_in_and_guarded(self) -> None:
         self.assertIn("ADMIN_PASSWORD=${admin_password}", self.env)
@@ -144,6 +147,21 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("chmod 0600 ${local.runtime_staging_dir}/.env", main_tf)
         self.assertIn("${local.runtime_staging_dir}/workspace.env", main_tf)
         self.assertIn("${local.runtime_staging_dir}/openai_codex_auth_json_base64", main_tf)
+        self.assertIn("${local.runtime_staging_dir}/vpn-auth.txt", main_tf)
+
+    def test_host_vpn_runtime_is_opt_in_and_route_guarded(self) -> None:
+        self.assertIn('VPN_ENABLED="${vpn_enabled}"', self.vpn_openvpn)
+        self.assertIn('VPN_PROVIDER="${vpn_provider}"', self.vpn_openvpn)
+        self.assertIn("vpn-auth.txt", self.vpn_openvpn)
+        self.assertIn("auth-user-pass /etc/agent-stack-vpn/auth.txt", self.vpn_openvpn)
+        self.assertIn("agent-stack-vpn.service", self.vpn_openvpn)
+        self.assertIn("agent-stack-vpn-routes setup", self.vpn_openvpn)
+        self.assertIn("vpn_bypass_cidrs_json", self.vpn_openvpn)
+        self.assertIn("net.ipv6.conf.all.disable_ipv6 = 1", self.vpn_openvpn)
+        self.assertIn("Requires=agent-stack-vpn.service", self.agent_stack_service)
+        self.assertIn("After=agent-stack-vpn.service", self.agent_stack_service)
+        self.assertIn("vpn|agent-stack", self.diagnostics)
+        self.assertIn("journalctl -u agent-stack-vpn", self.diagnostics)
 
     def test_runtime_templates_include_tailscale_watchdog_units(self) -> None:
         watchdog = (RUNTIME_DIR / "agent-stack-tailscale-watchdog.sh.tpl").read_text(encoding="utf-8")
@@ -176,7 +194,7 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("SSH_ORIGINAL_COMMAND", self.diagnostics_ssh)
         self.assertIn("sudo -n /usr/local/bin/agent-stack-diagnostics", self.diagnostics_ssh)
         self.assertIn("openclaw|hermes|n8n|postgres|caddy|workspace", self.diagnostics)
-        self.assertIn("tailscale|agent-stack", self.diagnostics)
+        self.assertIn("tailscale|vpn|agent-stack", self.diagnostics)
         self.assertIn("show_container_inspect", self.diagnostics)
         self.assertNotIn("docker.sock", self.diagnostics)
 

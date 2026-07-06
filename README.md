@@ -25,22 +25,23 @@ Bootstrap is intentionally split into two provider-neutral phases:
 1. `cloud-init` runs a small first-boot loader on AWS, DigitalOcean, and Hetzner. It creates the `admin` user, installs the SSH key, waits for and mounts the persistent data volume at `/opt/agent-stack/data`, and writes `/opt/agent-stack/.loader-ready.json`.
 2. Terraform waits for `cloud-init status --wait`, connects over SSH as `admin`, uploads the rendered runtime bundle into a private `/opt/agent-stack/.staging-*` directory, and runs the shared installer with `sudo`.
 3. The installer writes `/opt/agent-stack/docker-compose.yml` and `/opt/agent-stack/.env`, installs Docker when needed, installs the host Codex CLI when `host_codex_cli_enabled = true`, validates the Compose config, and creates the `agent-stack` systemd service. `openclaw.service` remains as a compatibility wrapper.
-4. If enabled, configures Tailscale in `sidecar` mode by default, or directly on the host when `tailscale_mode = "host"`, and runs `tailscale serve` for OpenClaw over HTTPS on your tailnet.
-5. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste.
-6. Applies `openclaw_config_mode`:
+4. If `vpn_enabled = true`, installs a host OpenVPN client, starts `agent-stack-vpn.service`, and requires the VPN before starting the Docker stack so OpenClaw, Hermes, n8n, and the optional workspace egress through the tunnel.
+5. If enabled, configures Tailscale in `sidecar` mode by default, or directly on the host when `tailscale_mode = "host"`, and runs `tailscale serve` for OpenClaw over HTTPS on your tailnet.
+6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste.
+7. Applies `openclaw_config_mode`:
    - `auto` (default): preserve an existing `openclaw.json`, manage fresh installs
    - `manage`: always apply starter channel/model bootstrap changes
    - `preserve`: skip optional channel/model bootstrap changes
-7. After OpenClaw first-run initialization, seeds starter workspace files (create-if-missing) in `/home/node/.openclaw/workspace`: `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `USER.md`
-8. Installs/enables only the selected `agent_channel` plugin (`telegram` or `whatsapp`)
-9. If `agent_channel = "telegram"` and `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
+8. After OpenClaw first-run initialization, seeds starter workspace files (create-if-missing) in `/home/node/.openclaw/workspace`: `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `USER.md`
+9. Installs/enables only the selected `agent_channel` plugin (`telegram` or `whatsapp`)
+10. If `agent_channel = "telegram"` and `telegram_bot_token` is set, preconfigures `channels.telegram.botToken`, enables Telegram channel config, and sets `channels.telegram.streaming = "off"` for clean final-message delivery
    - If `telegram_allow_from` is non-empty, writes `channels.telegram.allowFrom` with those pre-approved user IDs
-10. Registers `ANTHROPIC_AUTH_KEY` only when the `anthropic` provider is selected
-11. Configures only user-selected model routing:
+11. Registers `ANTHROPIC_AUTH_KEY` only when the `anthropic` provider is selected
+12. Configures only user-selected model routing:
     - required `default_model`
     - ordered `fallback_models`
     - restricted to explicitly selected `model_providers_enabled`
-12. Writes `/opt/agent-stack/.last-apply.json` with the runtime artifact checksum and selected services after a successful installer run.
+13. Writes `/opt/agent-stack/.last-apply.json` with the runtime artifact checksum and selected services after a successful installer run.
 
 OpenClaw, Hermes, n8n, Postgres, and the optional workspace run as Docker containers. UI ports bind to `127.0.0.1` by default. If `public_domain_enabled = true`, Caddy opens 80/443, terminates HTTPS, and protects UI routes with basic auth. n8n webhook paths can remain public when `n8n_public_webhooks_enabled = true`.
 
@@ -55,6 +56,7 @@ OpenClaw, Hermes, n8n, Postgres, and the optional workspace run as Docker contai
 | Cloud credentials | AWS access key + secret, DigitalOcean API token, **or** Hetzner Cloud API token |
 | LLM credentials | At least one model provider credential: Anthropic/OpenAI/Groq/Gemini API key, or imported Codex auth for subscription-backed OpenAI |
 | Tailscale account (recommended) | [Sign up free](https://tailscale.com/) — generate an auth key |
+| VPN service credentials (optional) | Required only when `vpn_enabled = true`; for NordVPN use manual OpenVPN service credentials, not the normal account password |
 
 ---
 
@@ -99,6 +101,7 @@ repo_ssh_config_path   = "./.ssh/config"
 host_codex_login_command = "ssh admin@1.2.3.4 'codex login --device-auth'"
 resolved_ssh_public_key_source = "existing_public_key"
 tailscale_note         = "Tailscale is enabled in sidecar mode. Device 'agent-stack' will appear in your admin console..."
+vpn_note               = "disabled"
 dashboard_url          = "https://agent-stack  (via Tailscale Serve, mode=sidecar)"
 dashboard_url_with_token_import = "https://openclaw/#token=<gateway-token>"
 openclaw_url           = "https://agent-stack  (via Tailscale Serve, mode=sidecar)"
@@ -336,6 +339,28 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 
 ---
 
+## Host VPN Egress
+
+Set `vpn_enabled = true` to route host and Docker service egress through a host OpenVPN tunnel. This is intended for cases where VPS/datacenter IP reputation causes excessive blocking for browser automation, n8n HTTP requests, or the workspace container.
+
+For NordVPN, use manual OpenVPN service credentials from the Nord Account dashboard and a specific `.ovpn` config URL from Nord's OpenVPN config archive. Do not use your normal Nord account email/password.
+
+```hcl
+vpn_enabled            = true
+vpn_provider           = "nordvpn_openvpn"
+vpn_openvpn_config_url = "https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/us0000.nordvpn.com.udp.ovpn"
+vpn_username           = "..."
+vpn_password           = "..."
+vpn_bypass_cidrs       = ["203.0.113.5/32"]
+vpn_disable_ipv6       = true
+```
+
+`vpn_bypass_cidrs` is required when the VPN is enabled. Include the admin IP/CIDR you use for SSH, or `100.64.0.0/10` if you administer the host through Tailscale host mode. Without a bypass route, a full-tunnel VPN can route SSH replies out through the VPN interface and cut off access to the VPS.
+
+A VPN changes egress IP and DNS path; it does not guarantee that Google, Indeed, Cloudflare-protected sites, or job boards will stop challenging automation. Shared commercial VPN IPs are also commonly fingerprinted. A dedicated/static VPN IP or a more trusted proxy can still be necessary.
+
+---
+
 ## Variables reference
 
 | Variable | Default | Description |
@@ -398,6 +423,14 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 | `workspace_password` | `""` | Sensitive password for workspace SSH; required when `workspace` is enabled |
 | `workspace_ssh_host_port` | `2222` | Host port mapped to workspace SSH; do not open in provider firewalls |
 | `workspace_ssh_public_keys` | `[]` | OpenSSH public keys authorized for the workspace user |
+| `vpn_enabled` | `false` | Install and start host OpenVPN before the Docker stack |
+| `vpn_provider` | `"nordvpn_openvpn"` | VPN integration; v1 supports NordVPN manual OpenVPN |
+| `vpn_openvpn_config_url` | `""` | HTTPS URL for the OpenVPN `.ovpn` server config |
+| `vpn_username` | `""` | Sensitive VPN service username |
+| `vpn_password` | `""` | Sensitive VPN service password |
+| `vpn_bypass_cidrs` | `[]` | IPv4 CIDRs that keep using the original host gateway |
+| `vpn_disable_ipv6` | `true` | Disable host IPv6 while VPN is enabled to avoid IPv6 egress leaks |
+| `vpn_healthcheck_url` | `"https://api.ipify.org"` | URL diagnostics use to report current public egress IP |
 | `hermes_image` | `"nousresearch/hermes-agent:latest"` | Hermes Docker image |
 | `hermes_dashboard_enabled` | `true` | Enable Hermes dashboard |
 | `hermes_api_server_enabled` | `true` | Enable Hermes API server |
@@ -441,6 +474,7 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 | `workspace_ssh_command` | SSH command for the optional workspace container |
 | `workspace_codex_login_command` | Device-auth command for Codex inside the optional workspace |
 | `workspace_note` | Workspace access and safety notes |
+| `vpn_note` | Host VPN status and diagnostics hint |
 | `openclaw_url` | OpenClaw UI URL or access hint |
 | `hermes_url` | Hermes dashboard URL or access hint |
 | `n8n_url` | n8n UI URL or access hint |
@@ -464,6 +498,7 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 - The Tailscale sidecar requires `/dev/net/tun` and `NET_ADMIN` / `NET_RAW` capabilities. Host mode avoids those container capabilities but installs Tailscale directly on the VM.
 - The optional workspace uses password SSH inside the container and maps port `workspace_ssh_host_port` on the host, but AgentStack does not open that port in provider firewalls. Keep it reachable through the tailnet.
 - The workspace does not mount the Docker socket. Its `agent-stack-diagnostics` command reaches a host-side forced-command helper with a narrow allowlist.
+- **Host VPN egress**: `vpn_enabled = true` changes host routing before the Docker stack starts. Set `vpn_bypass_cidrs` to preserve SSH/Tailscale administration, and treat `vpn_username` / `vpn_password` as Terraform-state secrets.
 - Only SSH (port 22) and Tailscale UDP (41641) are opened in firewall rules by default. Ports 80/443 open only when public domains are enabled.
 - `gateway_token` and `dashboard_url_with_token_import` outputs contain credentials. Treat Terraform output/state as sensitive.
 - **API keys** are rendered by Terraform into the runtime bundle and uploaded over SSH into a private `/opt/agent-stack/.staging-*` directory before being installed as `/opt/agent-stack/.env`. They are still present in Terraform state and local plan/apply material, so treat state files and plans as sensitive.

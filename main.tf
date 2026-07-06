@@ -438,6 +438,12 @@ locals {
     workspace_password                   = var.workspace_password
     workspace_ssh_host_port              = var.workspace_ssh_host_port
     workspace_ssh_public_keys_base64     = base64encode(join("\n", [for key in var.workspace_ssh_public_keys : trimspace(key)]))
+    vpn_enabled                          = var.vpn_enabled
+    vpn_provider                         = var.vpn_provider
+    vpn_openvpn_config_url               = var.vpn_openvpn_config_url
+    vpn_bypass_cidrs_json                = jsonencode(var.vpn_bypass_cidrs)
+    vpn_disable_ipv6                     = var.vpn_disable_ipv6
+    vpn_healthcheck_url                  = var.vpn_healthcheck_url
     tailscale_mode                       = var.tailscale_mode
     tailscale_sidecar_enabled            = local.tailscale_sidecar_enabled
     tailscale_host_enabled               = local.tailscale_host_enabled
@@ -451,6 +457,8 @@ locals {
   runtime_host_tailscale         = templatefile("${path.module}/modules/common/templates/runtime/host-tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
   runtime_workspace_dockerfile   = templatefile("${path.module}/modules/common/templates/runtime/workspace.Dockerfile.tpl", local.runtime_template_vars)
   runtime_workspace_entrypoint   = templatefile("${path.module}/modules/common/templates/runtime/workspace-entrypoint.sh.tpl", local.runtime_template_vars)
+  runtime_vpn_openvpn            = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-vpn-openvpn.sh.tpl", local.runtime_template_vars)
+  runtime_vpn_auth               = var.vpn_enabled ? "${var.vpn_username}\n${var.vpn_password}\n" : ""
   runtime_diagnostics_helper     = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-diagnostics.sh.tpl", local.runtime_template_vars)
   runtime_diagnostics_ssh_helper = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-diagnostics-ssh.sh.tpl", local.runtime_template_vars)
   runtime_layout_migrator        = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-migrate-layout.sh.tpl", local.runtime_template_vars)
@@ -475,6 +483,8 @@ locals {
     nonsensitive(local.runtime_host_tailscale),
     nonsensitive(local.runtime_workspace_dockerfile),
     nonsensitive(local.runtime_workspace_entrypoint),
+    nonsensitive(local.runtime_vpn_openvpn),
+    nonsensitive(local.runtime_vpn_auth),
     nonsensitive(local.runtime_diagnostics_helper),
     nonsensitive(local.runtime_diagnostics_ssh_helper),
     nonsensitive(local.runtime_layout_migrator),
@@ -571,6 +581,16 @@ resource "terraform_data" "runtime_apply" {
   }
 
   provisioner "file" {
+    content     = local.runtime_vpn_openvpn
+    destination = "${local.runtime_staging_dir}/agent-stack-vpn-openvpn"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_vpn_auth
+    destination = "${local.runtime_staging_dir}/vpn-auth.txt"
+  }
+
+  provisioner "file" {
     content     = local.runtime_diagnostics_helper
     destination = "${local.runtime_staging_dir}/agent-stack-diagnostics"
   }
@@ -653,8 +673,8 @@ resource "terraform_data" "runtime_apply" {
   provisioner "remote-exec" {
     inline = [
       "chmod 0700 ${local.runtime_staging_dir}",
-      "chmod 0600 ${local.runtime_staging_dir}/.env ${local.runtime_staging_dir}/workspace.env ${local.runtime_staging_dir}/openai_codex_auth_json_base64",
-      "chmod 0755 ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir}/agent-stack-migrate-layout ${local.runtime_staging_dir}/mount-agent-stack-volume.sh ${local.runtime_staging_dir}/tailscale-bootstrap.sh ${local.runtime_staging_dir}/host-tailscale-bootstrap.sh ${local.runtime_staging_dir}/workspace-entrypoint.sh ${local.runtime_staging_dir}/agent-stack-diagnostics ${local.runtime_staging_dir}/agent-stack-diagnostics-ssh ${local.runtime_staging_dir}/agent-stack-tailscale-watchdog",
+      "chmod 0600 ${local.runtime_staging_dir}/.env ${local.runtime_staging_dir}/workspace.env ${local.runtime_staging_dir}/openai_codex_auth_json_base64 ${local.runtime_staging_dir}/vpn-auth.txt",
+      "chmod 0755 ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir}/agent-stack-migrate-layout ${local.runtime_staging_dir}/mount-agent-stack-volume.sh ${local.runtime_staging_dir}/tailscale-bootstrap.sh ${local.runtime_staging_dir}/host-tailscale-bootstrap.sh ${local.runtime_staging_dir}/workspace-entrypoint.sh ${local.runtime_staging_dir}/agent-stack-vpn-openvpn ${local.runtime_staging_dir}/agent-stack-diagnostics ${local.runtime_staging_dir}/agent-stack-diagnostics-ssh ${local.runtime_staging_dir}/agent-stack-tailscale-watchdog",
       "sudo bash ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir} ${local.runtime_artifact_checksum}",
     ]
   }

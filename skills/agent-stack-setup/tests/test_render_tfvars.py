@@ -158,6 +158,49 @@ class RenderTfvarsTest(unittest.TestCase):
         self.assertIn('hcloud_token = "real-hcloud-token"', rendered)
         self.assertIn('hcloud_server_type = "cpx21"', rendered)
 
+    def test_renders_host_vpn_fixture(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "hetzner",
+                "hcloud_token": "real-hcloud-token",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_enabled": False,
+                "vpn_enabled": True,
+                "vpn_openvpn_config_url": "https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/us0000.nordvpn.com.udp.ovpn",
+                "vpn_username": "nord-service-user",
+                "vpn_password": "nord-service-password",
+                "vpn_bypass_cidrs": ["203.0.113.5/32"],
+            }
+        )
+        self.assertIn("vpn_enabled = true", rendered)
+        self.assertIn('vpn_provider = "nordvpn_openvpn"', rendered)
+        self.assertIn('vpn_openvpn_config_url = "https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/us0000.nordvpn.com.udp.ovpn"', rendered)
+        self.assertIn('vpn_username = "nord-service-user"', rendered)
+        self.assertIn('vpn_password = "nord-service-password"', rendered)
+        self.assertIn('vpn_bypass_cidrs = [\n  "203.0.113.5/32",\n]', rendered)
+
+    def test_rejects_host_vpn_without_bypass_cidr(self) -> None:
+        result, _ = run_render(
+            {
+                "cloud_provider": "hetzner",
+                "hcloud_token": "real-hcloud-token",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_enabled": False,
+                "vpn_enabled": True,
+                "vpn_openvpn_config_url": "https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/us0000.nordvpn.com.udp.ovpn",
+                "vpn_username": "nord-service-user",
+                "vpn_password": "nord-service-password",
+            },
+            expect_success=False,
+        )
+        self.assertIn("vpn_bypass_cidrs", result.stderr)
+
     def test_renders_existing_volume_fixture(self) -> None:
         _, rendered = run_render(
             {
@@ -214,6 +257,9 @@ class RenderTfvarsTest(unittest.TestCase):
             "openclaw_health_retries",
             "openai_auth_mode",
             "postgres_image",
+            "vpn_enabled",
+            "vpn_provider",
+            "vpn_disable_ipv6",
         ]:
             self.assertIn(f"{name} = {variable_default(name)}", rendered)
 

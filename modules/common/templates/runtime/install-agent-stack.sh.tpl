@@ -39,6 +39,7 @@ require_file openclaw.service
 require_file enabled-services.json
 require_file workspace.env
 require_file host-tailscale-bootstrap.sh
+require_file agent-stack-vpn-openvpn
 require_file workspace.Dockerfile
 require_file workspace-entrypoint.sh
 require_file agent-stack-diagnostics
@@ -314,6 +315,19 @@ configure_host_tailscale() {
     "$app/host-tailscale-bootstrap.sh"
 }
 
+configure_host_vpn() {
+  if [ "${vpn_enabled}" != "true" ]; then
+    echo "[vpn] Skipped (vpn_enabled=false)."
+    if [ -x "$app/agent-stack-vpn-openvpn" ]; then
+      "$app/agent-stack-vpn-openvpn" disable || true
+    fi
+    return 0
+  fi
+
+  echo "[vpn] Configuring host-level VPN..."
+  "$app/agent-stack-vpn-openvpn" enable "$staging"
+}
+
 wait_agent_stack_initial_restart() {
   for attempt in $(seq 1 60); do
     if systemctl is-active --quiet agent-stack; then
@@ -341,7 +355,7 @@ docker compose --env-file "$staging/.env" -f "$staging/docker-compose.yml" confi
 
 rm -rf "$previous"
 install -d -m 0700 "$previous"
-for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh workspace.Dockerfile workspace-entrypoint.sh; do
+for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh; do
   [ -e "$app/$path" ] && cp -a "$app/$path" "$previous/" || true
 done
 
@@ -358,6 +372,9 @@ if [ -f "$staging/tailscale-bootstrap.sh" ]; then
 fi
 if [ -f "$staging/host-tailscale-bootstrap.sh" ]; then
   install -m 0700 "$staging/host-tailscale-bootstrap.sh" "$app/host-tailscale-bootstrap.sh"
+fi
+if [ -f "$staging/agent-stack-vpn-openvpn" ]; then
+  install -m 0700 "$staging/agent-stack-vpn-openvpn" "$app/agent-stack-vpn-openvpn"
 fi
 if [ -d "$staging/templates" ]; then
   rm -rf "$app/templates"
@@ -379,6 +396,7 @@ if [ -f "$staging/agent-stack-tailscale-watchdog" ]; then
 fi
 
 systemctl daemon-reload
+configure_host_vpn
 systemctl enable agent-stack openclaw
 if [ "${tailscale_sidecar_enabled}" = "true" ] && grep -q '^TAILSCALE_AUTH_KEY=' "$app/.env"; then
   systemctl enable --now agent-stack-tailscale-watchdog.timer || true
@@ -393,7 +411,7 @@ if [ "$restart_status" -ne 0 ]; then
 fi
 if ! wait_agent_stack_initial_restart; then
   echo "[runtime] restart did not recover; restoring previous runtime files" >&2
-  for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh workspace.Dockerfile workspace-entrypoint.sh; do
+  for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh; do
     if [ -e "$previous/$path" ]; then
       cp -a "$previous/$path" "$app/$path"
     else

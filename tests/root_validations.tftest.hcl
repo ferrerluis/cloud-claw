@@ -92,6 +92,63 @@ run "rejects_tailscale_without_auth_key" {
   ]
 }
 
+run "rejects_vpn_without_config_url" {
+  command = plan
+
+  variables {
+    vpn_enabled      = true
+    vpn_username     = "nord-service-user"
+    vpn_password     = "nord-service-password"
+    vpn_bypass_cidrs = ["203.0.113.5/32"]
+  }
+
+  expect_failures = [
+    var.vpn_openvpn_config_url,
+  ]
+}
+
+run "rejects_vpn_without_credentials" {
+  command = plan
+
+  variables {
+    vpn_enabled            = true
+    vpn_openvpn_config_url = "https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/us0000.nordvpn.com.udp.ovpn"
+    vpn_bypass_cidrs       = ["203.0.113.5/32"]
+  }
+
+  expect_failures = [
+    var.vpn_username,
+    var.vpn_password,
+  ]
+}
+
+run "rejects_vpn_without_bypass_cidrs" {
+  command = plan
+
+  variables {
+    vpn_enabled            = true
+    vpn_openvpn_config_url = "https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/us0000.nordvpn.com.udp.ovpn"
+    vpn_username           = "nord-service-user"
+    vpn_password           = "nord-service-password"
+  }
+
+  expect_failures = [
+    var.vpn_bypass_cidrs,
+  ]
+}
+
+run "rejects_vpn_non_cidr_bypass" {
+  command = plan
+
+  variables {
+    vpn_bypass_cidrs = ["203.0.113.5"]
+  }
+
+  expect_failures = [
+    var.vpn_bypass_cidrs,
+  ]
+}
+
 run "rejects_admin_password_without_scope" {
   command = plan
 

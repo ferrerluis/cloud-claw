@@ -251,6 +251,14 @@ Only ask follow-up questions here for:
 - `external_postgres_user`
 - `external_postgres_password`
 - `external_postgres_ssl_enabled`
+- `vpn_enabled`
+- `vpn_provider`
+- `vpn_openvpn_config_url`
+- `vpn_username`
+- `vpn_password`
+- `vpn_bypass_cidrs`
+- `vpn_disable_ipv6`
+- `vpn_healthcheck_url`
 - `acme_email`
 - `ui_auth_username`
 - `ui_auth_password`
@@ -285,4 +293,5 @@ Advanced defaults:
 
 - n8n uses local Postgres on the persistent data volume by default.
 - External Postgres is an advanced branch and requires host, port, database, user, password, and SSL choice.
+- Host VPN egress is an advanced branch. If enabled, collect manual VPN service credentials, an OpenVPN config URL, and at least one bypass CIDR for SSH or host Tailscale access.
 - Hermes, n8n, Postgres image tags, generated secret overrides, and public webhook exposure are advanced config.

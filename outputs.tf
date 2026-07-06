@@ -121,6 +121,13 @@ output "workspace_note" {
   ) : "disabled"
 }
 
+output "vpn_note" {
+  description = "Host VPN egress status and diagnostics hint."
+  value = var.vpn_enabled ? (
+    "Host VPN is enabled with provider ${var.vpn_provider}. Docker service egress should route through agent-stack-vpn.service; verify with: agent-stack-diagnostics health vpn"
+  ) : "disabled"
+}
+
 output "gateway_token" {
   description = "Gateway token used by OpenClaw Control UI and WebSocket auth."
   value       = nonsensitive(local.resolved_gateway_token)
