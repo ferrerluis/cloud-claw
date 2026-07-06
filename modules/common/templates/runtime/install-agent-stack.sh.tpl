@@ -25,6 +25,11 @@ env_file_value() {
   sed -n "s/^$key=//p" "$file" | tail -n 1 || true
 }
 
+reload_sshd() {
+  sshd -t
+  systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
+}
+
 require_file docker-compose.yml
 require_file .env
 require_file mount-agent-stack-volume.sh
@@ -104,6 +109,73 @@ configure_caddyfile() {
   chmod 0600 "$staging/Caddyfile"
 }
 
+configure_admin_password_ssh() {
+  local password access config marker
+  password="$(env_file_value "$app/.env" ADMIN_PASSWORD)"
+  access="$(env_file_value "$app/.env" ADMIN_PASSWORD_SSH_SCOPE)"
+  [ -n "$access" ] || access="disabled"
+  config="/etc/ssh/sshd_config.d/90-agent-stack-admin-password.conf"
+  marker="/var/lib/agent-stack/admin-password-managed"
+
+  install -d -m 0700 /var/lib/agent-stack
+
+  case "$access" in
+    disabled)
+      rm -f "$config"
+      if [ -f "$marker" ] && [ -z "$password" ]; then
+        passwd -l "${admin_username}" >/dev/null 2>&1 || true
+        rm -f "$marker"
+        echo "[admin-password] Managed admin password login disabled; locked ${admin_username} password."
+      else
+        echo "[admin-password] Admin password login disabled."
+      fi
+      ;;
+    tailnet|public)
+      if [ -z "$password" ]; then
+        fail "ADMIN_PASSWORD is required when ADMIN_PASSWORD_SSH_SCOPE=$access"
+      fi
+
+      printf '%s:%s\n' "${admin_username}" "$password" | chpasswd
+      passwd -u "${admin_username}" >/dev/null 2>&1 || true
+      touch "$marker"
+      chmod 0600 "$marker"
+
+      if [ "$access" = "tailnet" ]; then
+        cat >"$config" <<'EOF'
+# Managed by AgentStack.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+
+Match User ${admin_username} Address 100.64.0.0/10
+  PasswordAuthentication yes
+
+Match User ${admin_username} Address fd7a:115c:a1e0::/48
+  PasswordAuthentication yes
+EOF
+        echo "[admin-password] Enabled admin password SSH login for Tailscale source addresses only."
+      else
+        cat >"$config" <<'EOF'
+# Managed by AgentStack.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+
+Match User ${admin_username}
+  PasswordAuthentication yes
+EOF
+        echo "[admin-password] Enabled admin password SSH login for provider-firewall-permitted SSH sources."
+      fi
+      chmod 0644 "$config"
+      ;;
+    *)
+      fail "Unsupported ADMIN_PASSWORD_SSH_SCOPE=$access"
+      ;;
+  esac
+
+  reload_sshd
+}
+
 install_openclaw_runtime_patches() {
   install -d -m 0755 "$app/patches/openclaw"
 
@@ -133,6 +205,39 @@ sync_openai_codex_auth() {
   base64 --decode "$staging/openai_codex_auth_json_base64" > "$app/codex/auth.json"
   chown 1000:1000 "$app/codex/auth.json"
   chmod 0600 "$app/codex/auth.json"
+}
+
+install_host_codex_cli() {
+  if [ "${host_codex_cli_enabled}" != "true" ]; then
+    echo "[codex-host] Skipped (host_codex_cli_enabled=false)."
+    return 0
+  fi
+
+  local admin_home admin_group
+  admin_home="$(getent passwd "${admin_username}" | cut -d: -f6)"
+  admin_group="$(id -gn "${admin_username}")"
+
+  if command -v codex >/dev/null 2>&1; then
+    echo "[codex-host] Codex CLI already installed: $(codex --version 2>/dev/null || echo unknown)"
+    install -d -m 0700 -o "${admin_username}" -g "$admin_group" "$admin_home/.codex"
+    return 0
+  fi
+
+  echo "[codex-host] Installing Codex CLI on the host..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y --no-install-recommends ca-certificates curl git jq bubblewrap
+  rm -rf /var/lib/apt/lists/*
+
+  local codex_install_home="/opt/agent-stack/codex-cli"
+  local installer="/tmp/install-codex.sh"
+  install -d -m 0755 "$codex_install_home"
+  curl -fsSL https://chatgpt.com/codex/install.sh -o "$installer"
+  CODEX_NON_INTERACTIVE=1 CODEX_INSTALL_DIR=/usr/local/bin CODEX_HOME="$codex_install_home" sh "$installer"
+  rm -f "$installer"
+
+  install -d -m 0700 -o "${admin_username}" -g "$admin_group" "$admin_home/.codex"
+  codex --version
 }
 
 install_workspace_diagnostics_bridge() {
@@ -261,6 +366,8 @@ if [ -d "$staging/templates" ]; then
   chmod -R u=rwX,go=rX "$app/templates"
 fi
 sync_openai_codex_auth
+install_host_codex_cli
+configure_admin_password_ssh
 install_workspace_runtime
 
 install -m 0644 "$staging/agent-stack.service" /etc/systemd/system/agent-stack.service

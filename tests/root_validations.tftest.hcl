@@ -31,6 +31,8 @@ override_module {
 
 variables {
   project_name                  = "agent-stack"
+  admin_password                = ""
+  admin_password_ssh_scope      = "disabled"
   ssh_public_key                = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
   repo_ssh_private_key_path     = "tests/fixtures/fake_ssh_private_key.txt"
   generate_repo_ssh_config      = false
@@ -87,6 +89,62 @@ run "rejects_tailscale_without_auth_key" {
 
   expect_failures = [
     var.tailscale_auth_key,
+  ]
+}
+
+run "rejects_admin_password_without_scope" {
+  command = plan
+
+  variables {
+    admin_password = "agent-stack-admin-password-tests"
+  }
+
+  expect_failures = [
+    var.admin_password_ssh_scope,
+  ]
+}
+
+run "rejects_weak_admin_password" {
+  command = plan
+
+  variables {
+    admin_password           = "short"
+    admin_password_ssh_scope = "public"
+    allowed_ssh_cidr         = "203.0.113.5/32"
+  }
+
+  expect_failures = [
+    var.admin_password,
+  ]
+}
+
+run "rejects_tailnet_admin_password_without_host_tailscale" {
+  command = plan
+
+  variables {
+    admin_password           = "agent-stack-admin-password-tests"
+    admin_password_ssh_scope = "tailnet"
+    tailscale_enabled        = true
+    tailscale_mode           = "sidecar"
+    tailscale_auth_key       = "tskey-auth-agent-stack-tests"
+  }
+
+  expect_failures = [
+    var.admin_password_ssh_scope,
+  ]
+}
+
+run "rejects_public_admin_password_with_open_ssh_cidr" {
+  command = plan
+
+  variables {
+    admin_password           = "agent-stack-admin-password-tests"
+    admin_password_ssh_scope = "public"
+    allowed_ssh_cidr         = "0.0.0.0/0"
+  }
+
+  expect_failures = [
+    var.admin_password_ssh_scope,
   ]
 }
 

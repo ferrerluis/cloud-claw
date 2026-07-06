@@ -31,6 +31,8 @@ override_module {
 
 variables {
   project_name                  = "agent-stack"
+  admin_password                = ""
+  admin_password_ssh_scope      = "disabled"
   ssh_public_key                = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
   repo_ssh_private_key_path     = "tests/fixtures/fake_ssh_private_key.txt"
   generate_repo_ssh_config      = false
@@ -75,6 +77,11 @@ run "tailscale_private_outputs" {
   assert {
     condition     = strcontains(output.tailscale_note, "Tailscale is enabled in sidecar mode.")
     error_message = "Tailscale-enabled deployments should surface the Tailscale handoff note."
+  }
+
+  assert {
+    condition     = output.host_codex_login_command == "ssh admin@203.0.113.10 'codex login --device-auth'"
+    error_message = "Host Codex login command should use the admin SSH target and device auth."
   }
 }
 

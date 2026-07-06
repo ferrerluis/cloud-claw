@@ -1,4 +1,6 @@
 ANTHROPIC_API_KEY=${anthropic_api_key}
+ADMIN_PASSWORD=${admin_password}
+ADMIN_PASSWORD_SSH_SCOPE=${admin_password_ssh_scope}
 ANTHROPIC_AUTH_KEY=${anthropic_auth_key}
 OPENAI_API_KEY=${openai_api_key}
 GROQ_API_KEY=${groq_api_key}

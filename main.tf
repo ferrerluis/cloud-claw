@@ -370,6 +370,9 @@ locals {
     provider_type                        = var.cloud_provider
     project_name                         = var.project_name
     admin_username                       = var.admin_username
+    admin_password                       = var.admin_password
+    admin_password_ssh_scope             = var.admin_password_ssh_scope
+    host_codex_cli_enabled               = var.host_codex_cli_enabled
     ebs_volume_id                        = var.cloud_provider == "aws" ? local.runtime_data_volume_id : ""
     do_volume_name                       = local.runtime_do_volume_name
     hcloud_volume_id                     = var.cloud_provider == "hetzner" ? local.runtime_data_volume_id : ""

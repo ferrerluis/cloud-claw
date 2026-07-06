@@ -15,6 +15,20 @@ project_name = "agent-stack"
 # Standard SSH/admin username created on the VM across providers.
 admin_username = "admin"
 
+# Optional host admin password login for the sudo-capable VM user.
+# Blank + disabled keeps the host admin password locked and key-only.
+# "tailnet" allows SSH password auth only when the connection reaches sshd from
+# a Tailscale source address; this requires tailscale_enabled=true and tailscale_mode="host".
+# "public" allows SSH password auth on the normal provider-firewall SSH path;
+# Terraform rejects public password scope when allowed_ssh_cidr is 0.0.0.0/0.
+admin_password           = ""
+admin_password_ssh_scope = "disabled" # disabled | tailnet | public
+
+# Install Codex CLI on the VM host for sudo-capable admin troubleshooting.
+# Auth is created on the host after apply with:
+#   terraform output -raw host_codex_login_command
+host_codex_cli_enabled = true
+
 # ── AWS ─────────────────────────────────────────────────────────
 # Leave blank if deploying to DigitalOcean.
 # Alternatively, omit these and rely on the AWS_ACCESS_KEY_ID /
@@ -83,7 +97,7 @@ repo_ssh_host_alias      = "agent-stack"
 repo_ssh_identity_file   = "./.ssh/id_ed25519_agent_stack"
 
 # Restrict SSH to your own IP for best security: "203.0.113.5/32"
-# Leave as 0.0.0.0/0 only if you rely solely on Tailscale for access control.
+# Leave as 0.0.0.0/0 only when host admin password SSH remains disabled.
 allowed_ssh_cidr = "0.0.0.0/0"
 
 # ── LLM credentials ───────────────────────────────────────────────

@@ -24,7 +24,7 @@ Bootstrap is intentionally split into two provider-neutral phases:
 
 1. `cloud-init` runs a small first-boot loader on AWS, DigitalOcean, and Hetzner. It creates the `admin` user, installs the SSH key, waits for and mounts the persistent data volume at `/opt/agent-stack/data`, and writes `/opt/agent-stack/.loader-ready.json`.
 2. Terraform waits for `cloud-init status --wait`, connects over SSH as `admin`, uploads the rendered runtime bundle into a private `/opt/agent-stack/.staging-*` directory, and runs the shared installer with `sudo`.
-3. The installer writes `/opt/agent-stack/docker-compose.yml` and `/opt/agent-stack/.env`, installs Docker when needed, validates the Compose config, and creates the `agent-stack` systemd service. `openclaw.service` remains as a compatibility wrapper.
+3. The installer writes `/opt/agent-stack/docker-compose.yml` and `/opt/agent-stack/.env`, installs Docker when needed, installs the host Codex CLI when `host_codex_cli_enabled = true`, validates the Compose config, and creates the `agent-stack` systemd service. `openclaw.service` remains as a compatibility wrapper.
 4. If enabled, configures Tailscale in `sidecar` mode by default, or directly on the host when `tailscale_mode = "host"`, and runs `tailscale serve` for OpenClaw over HTTPS on your tailnet.
 5. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste.
 6. Applies `openclaw_config_mode`:
@@ -96,6 +96,7 @@ instance_public_ip     = "1.2.3.4"
 ssh_command            = "ssh admin@1.2.3.4"
 repo_ssh_command       = "./bin/agent-stack-ssh"
 repo_ssh_config_path   = "./.ssh/config"
+host_codex_login_command = "ssh admin@1.2.3.4 'codex login --device-auth'"
 resolved_ssh_public_key_source = "existing_public_key"
 tailscale_note         = "Tailscale is enabled in sidecar mode. Device 'agent-stack' will appear in your admin console..."
 dashboard_url          = "https://agent-stack  (via Tailscale Serve, mode=sidecar)"
@@ -143,10 +144,14 @@ Legacy `openai-codex/*` refs are still accepted for older configs, but new deplo
 
 These helpers keep SSH behavior consistent per clone and avoid editing `~/.ssh/config`.
 `terraform apply` also writes `./.ssh/config` with the current instance IP/user/key path.
+When host Tailscale mode is enabled, you can pass a live Tailscale DNS name or IP with `--host`; Terraform keeps the generic host Codex login output on the known SSH target because Tailscale may assign a conflict-safe MagicDNS name that differs from `project_name`.
 
 ```bash
 # Connect (host/IP comes from terraform outputs)
 bin/agent-stack-ssh
+
+# Connect through a known Tailscale target
+bin/agent-stack-ssh --host admin@<tailscale-ip-or-dns>
 
 # Run remote commands
 bin/agent-stack-ssh -- tail -f /var/log/openclaw-bootstrap.log
@@ -338,6 +343,9 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 | `cloud_provider` | `"aws"` | `"aws"`, `"digitalocean"`, or `"hetzner"` |
 | `project_name` | `"agent-stack"` | Prefix for all resource names |
 | `admin_username` | `"admin"` | Standard SSH/admin username created on the VM |
+| `admin_password` | `""` | Optional sensitive host admin password; blank keeps managed password locked |
+| `admin_password_ssh_scope` | `"disabled"` | Host admin password SSH scope: `disabled`, `tailnet`, or `public` |
+| `host_codex_cli_enabled` | `true` | Install Codex CLI on the VM host for admin troubleshooting |
 | `aws_region` | `"us-east-1"` | AWS region |
 | `aws_access_key` | `""` | AWS access key (or use env vars) |
 | `aws_secret_key` | `""` | AWS secret key (or use env vars) |
@@ -425,6 +433,7 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 | `ssh_command` | Full SSH command |
 | `repo_ssh_command` | Repo-local SSH wrapper command (`./bin/agent-stack-ssh`) |
 | `repo_ssh_config_path` | Path to generated repo-local SSH config file |
+| `host_codex_login_command` | Device-auth command for Codex CLI on the VM host |
 | `resolved_ssh_public_key_source` | Effective SSH key source (`tfvars_or_env`, `existing_public_key`, `derived_from_private_key`, `generated_new_keypair`) |
 | `tailscale_note` | Tailscale access instructions |
 | `dashboard_url` | URL to reach the OpenClaw UI |
@@ -458,7 +467,8 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 - Only SSH (port 22) and Tailscale UDP (41641) are opened in firewall rules by default. Ports 80/443 open only when public domains are enabled.
 - `gateway_token` and `dashboard_url_with_token_import` outputs contain credentials. Treat Terraform output/state as sensitive.
 - **API keys** are rendered by Terraform into the runtime bundle and uploaded over SSH into a private `/opt/agent-stack/.staging-*` directory before being installed as `/opt/agent-stack/.env`. They are still present in Terraform state and local plan/apply material, so treat state files and plans as sensitive.
-- **SSH CIDR**: set `allowed_ssh_cidr` to your own IP (`curl ifconfig.me`) — don't leave it `0.0.0.0/0` in production.
+- **Host admin SSH**: key auth is the default. `admin_password` can enable password login for the sudo-capable host user, but only use `admin_password_ssh_scope = "tailnet"` with `tailscale_mode = "host"` unless you also narrow `allowed_ssh_cidr` for public SSH.
+- **SSH CIDR**: set `allowed_ssh_cidr` to your own IP (`curl ifconfig.me`) when public SSH is needed; do not combine public admin password login with `0.0.0.0/0`.
 - **EBS encryption** is enabled on both the root and data volumes.
 - **IMDSv2** is enforced on EC2 (HTTP tokens required, 1-hop limit).
 

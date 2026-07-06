@@ -84,6 +84,9 @@ class TerraformContractTest(unittest.TestCase):
 
     def test_agent_stack_defaults_stay_authoritative_in_variables_tf(self) -> None:
         self.assertEqual(variable_default(self.variables_tf, "project_name"), '"agent-stack"')
+        self.assertEqual(variable_default(self.variables_tf, "admin_password"), '""')
+        self.assertEqual(variable_default(self.variables_tf, "admin_password_ssh_scope"), '"disabled"')
+        self.assertEqual(variable_default(self.variables_tf, "host_codex_cli_enabled"), "true")
         self.assertEqual(variable_default(self.variables_tf, "repo_ssh_host_alias"), '"agent-stack"')
         self.assertEqual(
             variable_default(self.variables_tf, "repo_ssh_private_key_path"),
@@ -96,6 +99,16 @@ class TerraformContractTest(unittest.TestCase):
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_host_port"), "2222")
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_public_keys"), "[]")
         self.assertEqual(variable_default(self.variables_tf, "tailscale_mode"), '"sidecar"')
+
+    def test_admin_password_contract_is_disabled_by_default_and_sensitive(self) -> None:
+        admin_password = extract_named_block(self.variables_tf, "variable", "admin_password")
+        admin_password_ssh_scope = extract_named_block(self.variables_tf, "variable", "admin_password_ssh_scope")
+        self.assertIn("sensitive   = true", admin_password)
+        self.assertIn("at least 14 characters", admin_password)
+        self.assertIn("disabled", admin_password_ssh_scope)
+        self.assertIn("tailnet", admin_password_ssh_scope)
+        self.assertIn("public", admin_password_ssh_scope)
+        self.assertIn("0.0.0.0/0", admin_password_ssh_scope)
 
     def test_workspace_contract_is_optional_and_sensitive(self) -> None:
         enabled_services = extract_named_block(self.variables_tf, "variable", "enabled_services")

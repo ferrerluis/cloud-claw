@@ -54,6 +54,7 @@ class RuntimeTemplateTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.compose = (RUNTIME_DIR / "docker-compose.yml.tpl").read_text(encoding="utf-8")
         cls.caddy = (RUNTIME_DIR / "Caddyfile.template.tpl").read_text(encoding="utf-8")
+        cls.env = (RUNTIME_DIR / "env.tpl").read_text(encoding="utf-8")
         cls.installer = (RUNTIME_DIR / "install-agent-stack.sh.tpl").read_text(encoding="utf-8")
         cls.agent_stack_service = (RUNTIME_DIR / "agent-stack.service.tpl").read_text(encoding="utf-8")
         cls.openclaw_service = (RUNTIME_DIR / "openclaw.service.tpl").read_text(encoding="utf-8")
@@ -109,13 +110,32 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("OPENAI_AUTH_MODE='${openai_auth_mode}'", self.installer)
         self.assertIn("configure_openai_codex_runtime_routes", self.installer)
         self.assertIn('.agentRuntime.id = "codex"', self.installer)
+        self.assertIn("install_host_codex_cli", self.installer)
         self.assertIn("Refreshing gateway token and gateway.controlUi.allowedOrigins", self.installer)
         self.assertIn(".last-apply.json", self.installer)
         self.assertIn("restoring previous runtime files", self.installer)
+        self.assertIn("configure_admin_password_ssh", self.installer)
         self.assertIn("install_workspace_runtime", self.installer)
         self.assertIn("install_workspace_diagnostics_bridge", self.installer)
         self.assertIn("configure_host_tailscale", self.installer)
         self.assertIn("host-tailscale-bootstrap.sh", self.installer)
+
+    def test_runtime_admin_password_is_opt_in_and_guarded(self) -> None:
+        self.assertIn("ADMIN_PASSWORD=${admin_password}", self.env)
+        self.assertIn("ADMIN_PASSWORD_SSH_SCOPE=${admin_password_ssh_scope}", self.env)
+        self.assertIn("passwd -l \"${admin_username}\"", self.installer)
+        self.assertIn("printf '%s:%s\\n' \"${admin_username}\" \"$password\" | chpasswd", self.installer)
+        self.assertIn("PasswordAuthentication no", self.installer)
+        self.assertIn("Match User ${admin_username} Address 100.64.0.0/10", self.installer)
+        self.assertIn("Match User ${admin_username} Address fd7a:115c:a1e0::/48", self.installer)
+
+    def test_host_codex_cli_install_is_opt_in_and_uses_admin_home_for_auth(self) -> None:
+        self.assertIn('[ "${host_codex_cli_enabled}" != "true" ]', self.installer)
+        self.assertIn("https://chatgpt.com/codex/install.sh", self.installer)
+        self.assertIn("CODEX_INSTALL_DIR=/usr/local/bin", self.installer)
+        self.assertIn('CODEX_HOME="$codex_install_home"', self.installer)
+        self.assertIn('install -d -m 0700 -o "${admin_username}" -g "$admin_group" "$admin_home/.codex"', self.installer)
+        self.assertIn("codex --version", self.installer)
 
     def test_runtime_stages_sensitive_files_with_private_permissions(self) -> None:
         main_tf = MAIN_TF.read_text(encoding="utf-8")

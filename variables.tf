@@ -33,6 +33,62 @@ variable "admin_username" {
   }
 }
 
+variable "admin_password" {
+  description = "Optional password for the SSH/admin user. Blank keeps the managed admin password locked and key-only. If set, also set admin_password_ssh_scope."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition = (
+      trimspace(var.admin_password) == "" ||
+      length(var.admin_password) >= 14
+    )
+    error_message = "admin_password must be blank or at least 14 characters."
+  }
+}
+
+variable "admin_password_ssh_scope" {
+  description = "Controls where SSH password login is accepted for the admin user: disabled, tailnet, or public. public requires allowed_ssh_cidr to be narrower than 0.0.0.0/0."
+  type        = string
+  default     = "disabled"
+
+  validation {
+    condition     = contains(["disabled", "tailnet", "public"], var.admin_password_ssh_scope)
+    error_message = "admin_password_ssh_scope must be one of: disabled, tailnet, public."
+  }
+
+  validation {
+    condition = (
+      (trimspace(var.admin_password) == "" && var.admin_password_ssh_scope == "disabled") ||
+      (trimspace(var.admin_password) != "" && var.admin_password_ssh_scope != "disabled")
+    )
+    error_message = "admin_password and admin_password_ssh_scope must be set together: leave both disabled/blank, or set a password with tailnet/public scope."
+  }
+
+  validation {
+    condition = (
+      var.admin_password_ssh_scope != "tailnet" ||
+      (var.tailscale_enabled && var.tailscale_mode == "host")
+    )
+    error_message = "admin_password_ssh_scope = \"tailnet\" requires tailscale_enabled = true and tailscale_mode = \"host\"."
+  }
+
+  validation {
+    condition = (
+      var.admin_password_ssh_scope != "public" ||
+      trimspace(var.allowed_ssh_cidr) != "0.0.0.0/0"
+    )
+    error_message = "admin_password_ssh_scope = \"public\" requires allowed_ssh_cidr to be narrower than 0.0.0.0/0."
+  }
+}
+
+variable "host_codex_cli_enabled" {
+  description = "Install Codex CLI on the VM host for admin troubleshooting. Authentication is created on the host with codex login --device-auth; local Codex auth is not copied."
+  type        = bool
+  default     = true
+}
+
 # ─────────────────────────────────────────────────────────
 # AWS
 # ─────────────────────────────────────────────────────────

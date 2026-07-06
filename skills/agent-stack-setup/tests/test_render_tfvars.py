@@ -208,6 +208,7 @@ class RenderTfvarsTest(unittest.TestCase):
         )
         for name in [
             "project_name",
+            "host_codex_cli_enabled",
             "repo_ssh_host_alias",
             "repo_ssh_private_key_path",
             "openclaw_health_retries",
