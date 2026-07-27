@@ -123,6 +123,9 @@ Follow-up rules:
 - If the user chooses Telegram without bootstrap preconfiguration, keep `agent_channel = "telegram"` and skip `telegram_bot_token`.
 - Ask for `telegram_allow_from` only if the user wants a pre-approved allowlist.
 - If `agent_channel = "whatsapp"` or OpenClaw is not enabled, do not ask Telegram questions.
+- If the workspace service is selected, collect `workspace_username`, `workspace_password`, `workspace_ssh_host_port`, and optional public key strings.
+- Ask whether `~/workspace` should be the Google Drive filesystem itself. If yes, collect `workspace_drive_remote`, cache limits, and explicit consent to import a base64 rclone config into sensitive Terraform state.
+- For Drive FUSE, require a custom Google OAuth `client_id` and `client_secret`; do not accept rclone's shared OAuth client. Explain that the workspace fails closed and that pre-existing local mountpoint files block deployment until the operator uses the explicit recovery tool.
 
 Suggested choices:
 

@@ -9,6 +9,7 @@ usage() {
 Usage:
   agent-stack-diagnostics status
   agent-stack-diagnostics health [openclaw|workspace|tailscale|vpn]
+  agent-stack-diagnostics workspace-drive [status|doctor|recovery-dry-run]
   agent-stack-diagnostics logs <openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|vpn|agent-stack> [lines]
   agent-stack-diagnostics inspect <openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|vpn|agent-stack>
   agent-stack-diagnostics restart <openclaw|hermes|n8n|postgres|caddy|workspace|tailscale|vpn|agent-stack>
@@ -72,6 +73,11 @@ show_status() {
   echo
   echo "== containers =="
   docker compose -f "$compose" ps 2>/dev/null || true
+  if [ -x /usr/local/bin/agent-stack-workspace-drive ]; then
+    echo
+    echo "== workspace Drive =="
+    /usr/local/bin/agent-stack-workspace-drive status 2>/dev/null || true
+  fi
   echo
   echo "== tailscale =="
   if command -v tailscale >/dev/null 2>&1; then
@@ -102,7 +108,9 @@ show_health() {
     workspace)
       local cid
       cid="$(container_id workspace)"
-      [ -n "$cid" ] && docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" || true
+      [ -n "$cid" ] || { echo "workspace container not found" >&2; return 1; }
+      docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid"
+      docker exec "$cid" /usr/local/bin/workspace-drive-healthcheck
       ;;
     tailscale)
       if command -v tailscale >/dev/null 2>&1; then
@@ -209,6 +217,18 @@ case "$cmd" in
   restart)
     [ $# -eq 2 ] || { usage >&2; exit 64; }
     restart_service "$2"
+    ;;
+  workspace-drive)
+    action="$${2:-status}"
+    case "$action" in
+      status|doctor|recovery-dry-run)
+        exec /usr/local/bin/agent-stack-workspace-drive "$action"
+        ;;
+      *)
+        echo "unsupported workspace-drive diagnostic command: $action" >&2
+        exit 64
+        ;;
+    esac
     ;;
   -h|--help|help)
     usage

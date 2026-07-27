@@ -35,6 +35,12 @@
   - Restore contents into `/opt/agent-stack/data`, preserving `openclaw`, `hermes`, `n8n`, `postgres`, and `caddy` as peer directories.
 - Partial layout migration:
   - `/opt/agent-stack` and a real `/opt/openclaw` directory both exist. Rerun `/usr/local/bin/agent-stack-migrate-layout` after stopping the stack.
+- Workspace file exists locally but not in Drive:
+  - Treat this as a missing or failed FUSE mount. Run `sudo agent-stack-workspace-drive doctor`; never start a second sync job over the same tree.
+- `workspace Drive deployment blocked by local residue`:
+  - The fail-closed preflight found files beneath the intended mountpoint. Run `sudo agent-stack-workspace-drive recovery-dry-run`; upload and quarantine require separate explicit confirmation flags.
+- Workspace container is restarting or unhealthy with Drive FUSE enabled:
+  - Check `/dev/fuse`, the custom OAuth client fields, rclone logs, and `sudo agent-stack-workspace-drive status`. SSH is intentionally withheld whenever the mount cannot be verified.
 
 ## Model and provider mismatch
 

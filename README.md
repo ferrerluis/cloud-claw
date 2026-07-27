@@ -288,6 +288,33 @@ tailscale_mode          = "host"
 
 The workspace image is Ubuntu-based, installs OpenSSH plus the Codex standalone installer, persists `/home/<workspace_username>` at `/opt/agent-stack/data/workspace/home`, and exposes SSH through the host at `workspace_ssh_host_port`. AgentStack does not open that port in cloud firewall rules; access is intended through the host's Tailscale address. `workspace_ssh_public_keys` accepts public key strings only; local private key paths, 1Password agent socket paths, and other client-side SSH details stay on each operator's machine. The workspace does not mount `/var/run/docker.sock`; diagnostics go through a forced-command host helper that only permits selected status, health, logs, inspect, and restart operations for AgentStack-managed services.
 
+To make `~/workspace` the Google Drive filesystem itself, enable the managed rclone FUSE mount:
+
+```hcl
+workspace_drive_fuse_enabled           = true
+workspace_drive_remote                 = "workspace-drive:"
+workspace_drive_rclone_config_base64   = "<base64 of the complete rclone.conf>"
+workspace_drive_vfs_cache_max_size     = "10G"
+workspace_drive_vfs_cache_min_free_space = "2G"
+```
+
+Configure the named rclone remote locally with `type = drive` and a custom Google OAuth `client_id` and `client_secret`; rclone's shared OAuth client is intentionally rejected. Encode the complete config without line wrapping, for example `base64 -w0 ~/.config/rclone/rclone.conf` on GNU systems. The sensitive payload is copied to the host with mode `0600`, but it is also stored in Terraform state, so the state backend must be protected as a secret.
+
+With FUSE enabled, rclone `1.74.4` runs in the workspace container in the foreground with full VFS caching. SSH starts only after `/home/<workspace_username>/workspace` is verified as a live FUSE mount. If rclone exits, the mount stops responding, or `/dev/fuse` is missing, the container becomes unhealthy and terminates instead of accepting writes into a local fallback directory.
+
+Deployment also fails if local files already exist beneath the mountpoint. AgentStack never uploads, moves, merges, or deletes those files automatically. Inspect and recover them explicitly on the host:
+
+```bash
+sudo agent-stack-workspace-drive doctor
+sudo agent-stack-workspace-drive recovery-dry-run
+sudo agent-stack-workspace-drive recover-copy --confirm-upload
+# After independently reviewing the uploaded files in Drive:
+sudo docker compose -f /opt/agent-stack/docker-compose.yml stop workspace
+sudo agent-stack-workspace-drive quarantine --confirm-quarantine
+```
+
+`recover-copy` copies the complete tree with no filters and verifies that all local files exist remotely with the same size. `quarantine` is a separate, recoverable move and is never invoked automatically.
+
 n8n uses local Postgres by default:
 
 ```hcl
@@ -423,6 +450,11 @@ A VPN changes egress IP and DNS path; it does not guarantee that Google, Indeed,
 | `workspace_password` | `""` | Sensitive password for workspace SSH; required when `workspace` is enabled |
 | `workspace_ssh_host_port` | `2222` | Host port mapped to workspace SSH; do not open in provider firewalls |
 | `workspace_ssh_public_keys` | `[]` | OpenSSH public keys authorized for the workspace user |
+| `workspace_drive_fuse_enabled` | `false` | Mount Google Drive directly at the workspace user's `~/workspace` and fail closed when unavailable |
+| `workspace_drive_remote` | `"workspace-drive:"` | rclone Drive remote and optional path mounted as `~/workspace` |
+| `workspace_drive_rclone_config_base64` | `""` | Sensitive base64 rclone config; a custom Google OAuth client is required |
+| `workspace_drive_vfs_cache_max_size` | `"10G"` | Maximum local disk used by rclone's full VFS cache |
+| `workspace_drive_vfs_cache_min_free_space` | `"2G"` | Free disk space preserved by rclone's VFS cache |
 | `vpn_enabled` | `false` | Install and start host OpenVPN before the Docker stack |
 | `vpn_provider` | `"nordvpn_openvpn"` | VPN integration; v1 supports NordVPN manual OpenVPN |
 | `vpn_openvpn_config_url` | `""` | HTTPS URL for the OpenVPN `.ovpn` server config |
@@ -473,6 +505,8 @@ A VPN changes egress IP and DNS path; it does not guarantee that Google, Indeed,
 | `dashboard_url_with_token_import` | First-time URL that auto-imports token into Control UI |
 | `workspace_ssh_command` | SSH command for the optional workspace container |
 | `workspace_codex_login_command` | Device-auth command for Codex inside the optional workspace |
+| `workspace_drive_status_command` | Host command that verifies the workspace Drive FUSE mount |
+| `workspace_drive_recovery_command` | Read-only preview for recovering files found beneath the FUSE mountpoint |
 | `workspace_note` | Workspace access and safety notes |
 | `vpn_note` | Host VPN status and diagnostics hint |
 | `openclaw_url` | OpenClaw UI URL or access hint |
@@ -582,16 +616,9 @@ hcloud volume create-snapshot <volume-id> --description "agent-stack-$(date +%Y%
 
 ---
 
-## Google Drive sync (optional)
+## Google Drive workspace FUSE (optional)
 
-The installed `docker-compose.yml` includes a commented-out `rclone` service. To activate it:
-
-1. On the server, run `rclone config` and follow the [Google Drive setup guide](https://rclone.org/drive/).
-2. This creates `~root/.config/rclone/rclone.conf`.
-3. Uncomment the `rclone` service block in `/opt/agent-stack/docker-compose.yml`.
-4. Run `systemctl restart agent-stack` to apply the change.
-
-The sidecar will sync `/opt/agent-stack/data/openclaw/workspace` → `gdrive:openclaw-workspace` periodically.
+Google Drive integration is managed through the `workspace_drive_*` Terraform variables described in the workspace section above. It mounts the remote directly at the workspace user's `~/workspace`; there is no second local working tree and no periodic sidecar sync. Do not hand-edit the installed Compose file or run a separate rclone daemon, because those changes bypass Terraform validation, mount supervision, and residue recovery safeguards.
 
 ---
 

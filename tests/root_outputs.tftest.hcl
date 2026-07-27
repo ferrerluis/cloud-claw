@@ -90,12 +90,14 @@ run "workspace_host_outputs" {
   state_key = "workspace-host-outputs"
 
   variables {
-    cloud_provider          = "hetzner"
-    enabled_services        = ["openclaw", "workspace"]
-    workspace_username      = "ferrerluis"
-    workspace_password      = "workspace-password-agent-stack-tests"
-    workspace_ssh_host_port = 2222
-    tailscale_mode          = "host"
+    cloud_provider                       = "hetzner"
+    enabled_services                     = ["openclaw", "workspace"]
+    workspace_username                   = "ferrerluis"
+    workspace_password                   = "workspace-password-agent-stack-tests"
+    workspace_ssh_host_port              = 2222
+    workspace_drive_fuse_enabled         = true
+    workspace_drive_rclone_config_base64 = "W3dvcmtzcGFjZS1kcml2ZV0KdHlwZSA9IGRyaXZlCmNsaWVudF9pZCA9IHRlc3QtY2xpZW50CmNsaWVudF9zZWNyZXQgPSB0ZXN0LXNlY3JldAp0b2tlbiA9IHt9Cg=="
+    tailscale_mode                       = "host"
   }
 
   assert {
@@ -111,6 +113,21 @@ run "workspace_host_outputs" {
   assert {
     condition     = strcontains(output.workspace_note, "no Docker socket is mounted") && !strcontains(output.workspace_note, "workspace-password-agent-stack-tests")
     error_message = "Workspace note should describe the safety boundary without exposing the workspace password."
+  }
+
+  assert {
+    condition     = strcontains(output.workspace_note, "fail-closed Google Drive FUSE mount")
+    error_message = "Workspace note should identify the FUSE mount as fail closed."
+  }
+
+  assert {
+    condition     = strcontains(output.workspace_drive_status_command, "agent-stack-workspace-drive doctor")
+    error_message = "Drive-enabled workspaces should expose the host-side doctor command."
+  }
+
+  assert {
+    condition     = strcontains(output.workspace_drive_recovery_command, "recovery-dry-run")
+    error_message = "Drive-enabled workspaces should expose only the read-only recovery preview by default."
   }
 
   assert {

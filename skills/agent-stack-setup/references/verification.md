@@ -16,6 +16,8 @@ Use this after `terraform apply` and during setup-time troubleshooting.
 - `terraform output -raw n8n_webhook_url`
 - `terraform output -raw bootstrap_log_command`
 - `terraform output -raw repo_bootstrap_log_command`
+- `terraform output -raw workspace_drive_status_command`
+- `terraform output -raw workspace_drive_recovery_command`
 
 ## Bootstrap checks
 
@@ -26,6 +28,14 @@ Use this after `terraform apply` and during setup-time troubleshooting.
   - OpenClaw: `bin/agent-stack-ssh -- curl -sv --max-time 5 http://127.0.0.1:18789/healthz`
   - Hermes: `bin/agent-stack-ssh -- curl -sv --max-time 5 http://127.0.0.1:9119`
   - n8n: `bin/agent-stack-ssh -- curl -sv --max-time 5 http://127.0.0.1:5678/healthz`
+  - Workspace Drive FUSE: `bin/agent-stack-ssh -- sudo agent-stack-workspace-drive doctor`
+
+## Workspace Drive checks
+
+- A healthy FUSE deployment reports the workspace container as healthy and `Drive mount: healthy` from `sudo agent-stack-workspace-drive status`.
+- Verify that `findmnt -M /home/<workspace_username>/workspace` inside the workspace container reports `fuse.rclone`.
+- If apply reports local residue, run `sudo agent-stack-workspace-drive recovery-dry-run`. Nothing is uploaded, moved, or deleted until the exact confirmation flag for a recovery command is supplied.
+- After `recover-copy --confirm-upload`, review the files in Drive before stopping the workspace and using `quarantine --confirm-quarantine`.
 
 ## Tailscale checks
 

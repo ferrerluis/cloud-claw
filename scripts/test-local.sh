@@ -86,6 +86,8 @@ run_phase "runtime shell syntax" bash -n \
   "$TEST_REPO/modules/common/templates/runtime/host-tailscale-bootstrap.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-vpn-openvpn.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/workspace-entrypoint.sh.tpl" \
+  "$TEST_REPO/modules/common/templates/runtime/workspace-drive-healthcheck.sh.tpl" \
+  "$TEST_REPO/modules/common/templates/runtime/agent-stack-workspace-drive.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-diagnostics.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-diagnostics-ssh.sh.tpl" || true
 

@@ -98,6 +98,9 @@ class TerraformContractTest(unittest.TestCase):
         self.assertEqual(variable_default(self.variables_tf, "workspace_username"), '"user"')
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_host_port"), "2222")
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_public_keys"), "[]")
+        self.assertEqual(variable_default(self.variables_tf, "workspace_drive_fuse_enabled"), "false")
+        self.assertEqual(variable_default(self.variables_tf, "workspace_drive_remote"), '"workspace-drive:"')
+        self.assertEqual(variable_default(self.variables_tf, "workspace_drive_vfs_cache_max_size"), '"10G"')
         self.assertEqual(variable_default(self.variables_tf, "vpn_enabled"), "false")
         self.assertEqual(variable_default(self.variables_tf, "vpn_provider"), '"nordvpn_openvpn"')
         self.assertEqual(variable_default(self.variables_tf, "vpn_bypass_cidrs"), "[]")
@@ -123,6 +126,12 @@ class TerraformContractTest(unittest.TestCase):
         self.assertIn("sensitive   = true", workspace_password)
         self.assertIn("must be OpenSSH public key strings", workspace_ssh_public_keys)
         self.assertNotIn("sensitive   = true", workspace_ssh_public_keys)
+
+        drive_enabled = extract_named_block(self.variables_tf, "variable", "workspace_drive_fuse_enabled")
+        drive_config = extract_named_block(self.variables_tf, "variable", "workspace_drive_rclone_config_base64")
+        self.assertIn("requires enabled_services to include workspace", drive_enabled)
+        self.assertIn("sensitive   = true", drive_config)
+        self.assertIn("base64decode", drive_config)
 
     def test_host_vpn_contract_is_disabled_by_default_and_sensitive(self) -> None:
         vpn_enabled = extract_named_block(self.variables_tf, "variable", "vpn_enabled")

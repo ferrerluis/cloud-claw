@@ -83,6 +83,7 @@ services:
   workspace:
     image: agent-stack-workspace:local
     restart: unless-stopped
+    stop_grace_period: 2m
     env_file: workspace.env
     ports:
       - "${workspace_ssh_host_port}:22"
@@ -90,11 +91,21 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - /opt/agent-stack/data/workspace/home:/home/${workspace_username}
+%{ if workspace_drive_fuse_enabled }
+      - /opt/agent-stack/workspace-rclone:/etc/rclone
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+%{ endif }
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      test: ["CMD", "/usr/local/bin/workspace-drive-healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 60s
 %{ endif }
 %{ if caddy_enabled }
 
