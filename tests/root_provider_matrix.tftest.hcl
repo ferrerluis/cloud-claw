@@ -30,29 +30,45 @@ override_module {
 }
 
 variables {
-  project_name                  = "agent-stack"
-  admin_password                = ""
-  admin_password_ssh_scope      = "disabled"
-  ssh_public_key                = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
-  repo_ssh_private_key_path     = "tests/fixtures/fake_ssh_private_key.txt"
-  generate_repo_ssh_config      = false
-  aws_access_key                = "AKIAAGENTSTACKTESTS"
-  aws_secret_key                = "agent-stack-tests"
-  do_token                      = "do-agent-stack-tests"
-  hcloud_token                  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  model_providers_enabled       = ["google"]
-  default_model                 = "google/gemini-3-flash-preview"
-  fallback_models               = []
-  gemini_api_key                = "gemini-agent-stack-tests"
-  gateway_token                 = "gateway-token-agent-stack-tests"
-  hermes_api_server_key         = "hermes-key-agent-stack-tests"
-  n8n_encryption_key            = "n8n-key-agent-stack-tests"
-  postgres_password             = "postgres-password-agent-stack-tests"
-  ui_auth_password              = "ui-password-agent-stack-tests"
-  enabled_services              = ["openclaw", "hermes", "n8n"]
-  tailscale_enabled             = true
-  tailscale_auth_key            = "tskey-auth-agent-stack-tests"
-  openai_codex_auth_json_base64 = ""
+  project_name                                   = "agent-stack"
+  admin_ssh_host_override                        = ""
+  workspace_ssh_host_override                    = ""
+  admin_password                                 = ""
+  admin_password_ssh_scope                       = "disabled"
+  ssh_public_key                                 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
+  repo_ssh_private_key_path                      = "tests/fixtures/fake_ssh_private_key.txt"
+  generate_repo_ssh_config                       = false
+  aws_access_key                                 = "AKIAAGENTSTACKTESTS"
+  aws_secret_key                                 = "agent-stack-tests"
+  do_token                                       = "do-agent-stack-tests"
+  hcloud_token                                   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  model_providers_enabled                        = ["google"]
+  default_model                                  = "google/gemini-3-flash-preview"
+  fallback_models                                = []
+  gemini_api_key                                 = "gemini-agent-stack-tests"
+  gateway_token                                  = "gateway-token-agent-stack-tests"
+  hermes_api_server_key                          = "hermes-key-agent-stack-tests"
+  n8n_encryption_key                             = "n8n-key-agent-stack-tests"
+  postgres_password                              = "postgres-password-agent-stack-tests"
+  ui_auth_password                               = "ui-password-agent-stack-tests"
+  enabled_services                               = ["openclaw", "hermes", "n8n"]
+  workspace_codex_release                        = "0.145.0"
+  workspace_codex_auto_update_enabled            = false
+  workspace_codex_auto_update_timezone           = "America/New_York"
+  workspace_codex_auto_update_time               = "04:00"
+  workspace_codex_auto_recover_interrupted_turns = false
+  workspace_fuse_enabled                         = false
+  vpn_enabled                                    = false
+  vpn_provider                                   = "nordvpn_openvpn"
+  vpn_nordvpn_token                              = ""
+  vpn_nordvpn_connect_target                     = ""
+  vpn_openvpn_config_url                         = ""
+  vpn_username                                   = ""
+  vpn_password                                   = ""
+  vpn_bypass_cidrs                               = []
+  tailscale_enabled                              = true
+  tailscale_auth_key                             = "tskey-auth-agent-stack-tests"
+  openai_codex_auth_json_base64                  = ""
 }
 
 run "aws_provider_matrix" {

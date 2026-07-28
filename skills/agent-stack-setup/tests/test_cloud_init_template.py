@@ -59,12 +59,22 @@ class RuntimeTemplateTest(unittest.TestCase):
         cls.installer = (RUNTIME_DIR / "install-agent-stack.sh.tpl").read_text(encoding="utf-8")
         cls.agent_stack_service = (RUNTIME_DIR / "agent-stack.service.tpl").read_text(encoding="utf-8")
         cls.openclaw_service = (RUNTIME_DIR / "openclaw.service.tpl").read_text(encoding="utf-8")
+        cls.vpn_manager = (RUNTIME_DIR / "agent-stack-vpn.sh.tpl").read_text(encoding="utf-8")
         cls.vpn_openvpn = (RUNTIME_DIR / "agent-stack-vpn-openvpn.sh.tpl").read_text(encoding="utf-8")
         cls.workspace_dockerfile = (RUNTIME_DIR / "workspace.Dockerfile.tpl").read_text(encoding="utf-8")
         cls.workspace_entrypoint = (RUNTIME_DIR / "workspace-entrypoint.sh.tpl").read_text(encoding="utf-8")
         cls.workspace_healthcheck = (RUNTIME_DIR / "workspace-drive-healthcheck.sh.tpl").read_text(encoding="utf-8")
         cls.workspace_drive_helper = (RUNTIME_DIR / "agent-stack-workspace-drive.sh.tpl").read_text(encoding="utf-8")
         cls.workspace_env = (RUNTIME_DIR / "workspace.env.tpl").read_text(encoding="utf-8")
+        cls.workspace_codex_update = (RUNTIME_DIR / "workspace-codex-update.sh.tpl").read_text(encoding="utf-8")
+        cls.workspace_codex_control = (RUNTIME_DIR / "workspace-codex-control.py.tpl").read_text(encoding="utf-8")
+        cls.workspace_update_host = (RUNTIME_DIR / "agent-stack-workspace-codex-update.sh.tpl").read_text(encoding="utf-8")
+        cls.workspace_update_service = (
+            RUNTIME_DIR / "agent-stack-workspace-codex-update.service.tpl"
+        ).read_text(encoding="utf-8")
+        cls.workspace_update_timer = (
+            RUNTIME_DIR / "agent-stack-workspace-codex-update.timer.tpl"
+        ).read_text(encoding="utf-8")
         cls.host_tailscale = (RUNTIME_DIR / "host-tailscale-bootstrap.sh.tpl").read_text(encoding="utf-8")
         cls.diagnostics = (RUNTIME_DIR / "agent-stack-diagnostics.sh.tpl").read_text(encoding="utf-8")
         cls.diagnostics_ssh = (RUNTIME_DIR / "agent-stack-diagnostics-ssh.sh.tpl").read_text(encoding="utf-8")
@@ -94,7 +104,16 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("env_file: workspace.env", self.compose)
         self.assertIn('${workspace_ssh_host_port}:22', self.compose)
         self.assertIn("/opt/agent-stack/data/workspace/home:/home/${workspace_username}", self.compose)
+        self.assertIn(
+            "/opt/agent-stack/data/workspace/ssh-host-keys:/var/lib/agent-stack-workspace/ssh-host-keys",
+            self.compose,
+        )
+        self.assertIn("${workspace_username}@${workspace_ssh_host}", self.installer)
         self.assertIn("host.docker.internal:host-gateway", self.compose)
+        self.assertIn("%{ if workspace_drive_fuse_enabled || workspace_fuse_enabled }", self.compose)
+        self.assertIn("/dev/fuse:/dev/fuse", self.compose)
+        self.assertIn("SYS_ADMIN", self.compose)
+        self.assertIn("apparmor:unconfined", self.compose)
         self.assertNotIn("/var/run/docker.sock", self.compose)
 
     def test_caddy_protects_ui_and_allows_webhooks(self) -> None:
@@ -106,6 +125,7 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("ExecStart=/usr/bin/docker compose up --remove-orphans", self.agent_stack_service)
         self.assertIn("docker compose pull --quiet --ignore-buildable || true", self.agent_stack_service)
         self.assertIn("ExecStart=/bin/systemctl start agent-stack.service", self.openclaw_service)
+        self.assertNotIn("ExecStop=/bin/systemctl stop agent-stack.service", self.openclaw_service)
 
     def test_runtime_installer_keeps_openclaw_bootstrap_behavior(self) -> None:
         self.assertIn("configure_swap", self.installer)
@@ -124,6 +144,7 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("configure_host_tailscale", self.installer)
         self.assertIn("host-tailscale-bootstrap.sh", self.installer)
         self.assertIn("configure_host_vpn", self.installer)
+        self.assertIn("agent-stack-vpn", self.installer)
         self.assertIn("agent-stack-vpn-openvpn", self.installer)
 
     def test_runtime_admin_password_is_opt_in_and_guarded(self) -> None:
@@ -152,20 +173,49 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("${local.runtime_staging_dir}/openai_codex_auth_json_base64", main_tf)
         self.assertIn("${local.runtime_staging_dir}/workspace-rclone.conf.base64", main_tf)
         self.assertIn("${local.runtime_staging_dir}/vpn-auth.txt", main_tf)
+        self.assertIn("${local.runtime_staging_dir}/vpn-token.txt", main_tf)
 
     def test_host_vpn_runtime_is_opt_in_and_route_guarded(self) -> None:
+        self.assertIn('VPN_PROVIDER="${vpn_provider}"', self.vpn_manager)
+        self.assertIn("nordvpn_openvpn) enable_openvpn", self.vpn_manager)
+        self.assertIn("nordvpn_nordlynx) enable_nordlynx", self.vpn_manager)
+        self.assertIn("nordvpn set technology NordLynx", self.vpn_manager)
+        self.assertIn("nordvpn set autoconnect on", self.vpn_manager)
+        self.assertIn("nordvpn set killswitch off", self.vpn_manager)
+        self.assertIn("nordvpn set threatprotectionlite off", self.vpn_manager)
+        self.assertIn("nordvpn set meshnet off", self.vpn_manager)
+        self.assertIn("100.64.0.0/10", self.vpn_manager)
+        self.assertIn("agent-stack-vpn-rollback.timer", self.vpn_manager)
+        self.assertIn("OnCalendar=", self.vpn_manager)
+        self.assertIn("systemctl stop agent-stack.service", self.vpn_manager)
+        self.assertIn("'nordvpn_openvpn' > \"$config_dir/provider\"", self.vpn_manager)
+        self.assertIn("'nordvpn_openvpn' > \"$config_dir/provider\"", self.vpn_openvpn)
+        self.assertIn("rm -f \"$token_file\"", self.vpn_manager)
+        self.assertNotIn("nordvpn logout", self.vpn_manager)
+        self.assertNotIn('echo "$token"', self.vpn_manager)
         self.assertIn('VPN_ENABLED="${vpn_enabled}"', self.vpn_openvpn)
         self.assertIn('VPN_PROVIDER="${vpn_provider}"', self.vpn_openvpn)
         self.assertIn("vpn-auth.txt", self.vpn_openvpn)
         self.assertIn("auth-user-pass /etc/agent-stack-vpn/auth.txt", self.vpn_openvpn)
         self.assertIn("agent-stack-vpn.service", self.vpn_openvpn)
         self.assertIn("agent-stack-vpn-routes setup", self.vpn_openvpn)
+        self.assertIn("agent-stack-recovery.conf", self.vpn_openvpn)
+        self.assertIn("clear_managed_vpn_dropins", self.vpn_openvpn)
         self.assertIn("vpn_bypass_cidrs_json", self.vpn_openvpn)
+        self.assertIn("is_tailscale_ipv4_cidr", self.vpn_openvpn)
+        self.assertIn("preserving Tailscale-managed route", self.vpn_openvpn)
         self.assertIn("net.ipv6.conf.all.disable_ipv6 = 1", self.vpn_openvpn)
         self.assertIn("Requires=agent-stack-vpn.service", self.agent_stack_service)
         self.assertIn("After=agent-stack-vpn.service", self.agent_stack_service)
         self.assertIn("vpn|agent-stack", self.diagnostics)
+        self.assertIn("service_enabled=", self.diagnostics)
+        self.assertIn("DropInPaths", self.diagnostics)
+        self.assertIn("systemctl cat agent-stack-vpn", self.diagnostics)
         self.assertIn("journalctl -u agent-stack-vpn", self.diagnostics)
+        self.assertIn("nordvpn status", self.diagnostics)
+        self.assertIn("nordvpn_version=", self.diagnostics)
+        self.assertIn("nordlynx", self.diagnostics)
+        self.assertIn("tailscale_online=", self.diagnostics)
 
     def test_runtime_templates_include_tailscale_watchdog_units(self) -> None:
         watchdog = (RUNTIME_DIR / "agent-stack-tailscale-watchdog.sh.tpl").read_text(encoding="utf-8")
@@ -179,9 +229,24 @@ class RuntimeTemplateTest(unittest.TestCase):
     def test_workspace_image_installs_codex_and_ssh_tools(self) -> None:
         self.assertIn("FROM rclone/rclone:1.74.4 AS rclone", self.workspace_dockerfile)
         self.assertIn("FROM ubuntu:24.04", self.workspace_dockerfile)
-        for package in ["openssh-server", "git", "curl", "jq", "bubblewrap", "fuse3", "tini", "util-linux"]:
+        for package in [
+            "openssh-server",
+            "git",
+            "curl",
+            "jq",
+            "bubblewrap",
+            "fuse3",
+            "rclone",
+            "util-linux",
+            "python3",
+            "python3-pip",
+            "python3-venv",
+            "tini",
+        ]:
             self.assertIn(package, self.workspace_dockerfile)
         self.assertIn("https://chatgpt.com/codex/install.sh", self.workspace_dockerfile)
+        self.assertIn("ARG CODEX_RELEASE=${workspace_codex_release}", self.workspace_dockerfile)
+        self.assertIn('CODEX_RELEASE="$CODEX_RELEASE"', self.workspace_dockerfile)
         self.assertIn("CODEX_INSTALL_DIR=/usr/local/bin", self.workspace_dockerfile)
         self.assertIn("CODEX_HOME=/opt/codex", self.workspace_dockerfile)
         self.assertIn("WORKSPACE_PASSWORD is required", self.workspace_entrypoint)
@@ -189,9 +254,123 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("WORKSPACE_AUTHORIZED_KEYS_BASE64", self.workspace_entrypoint)
         self.assertIn("AuthorizedKeysFile .ssh/authorized_keys", self.workspace_entrypoint)
         self.assertIn("PubkeyAuthentication $pubkey_auth", self.workspace_entrypoint)
+        self.assertIn("WORKSPACE_HOST_KEY_DIR", self.workspace_entrypoint)
+        self.assertIn("ensure_host_key ed25519", self.workspace_entrypoint)
+        self.assertIn("ensure_host_key ecdsa", self.workspace_entrypoint)
+        self.assertIn("ensure_host_key rsa 4096", self.workspace_entrypoint)
+        self.assertIn("HostKey $host_key_dir/ssh_host_ed25519_key", self.workspace_entrypoint)
+        self.assertIn("HostKey $host_key_dir/ssh_host_ecdsa_key", self.workspace_entrypoint)
+        self.assertIn("HostKey $host_key_dir/ssh_host_rsa_key", self.workspace_entrypoint)
+        self.assertIn("WORKSPACE_FUSE_ENABLED", self.workspace_entrypoint)
+        self.assertIn("workspace-drive-mount", self.workspace_entrypoint)
+        self.assertIn("continuing SSH startup", self.workspace_entrypoint)
+        self.assertNotIn("ssh-keygen -A", self.workspace_entrypoint)
         self.assertIn("export CODEX_HOME=", self.workspace_entrypoint)
+        self.assertIn('export PATH="$home_dir/.local/bin:/usr/local/bin:', self.workspace_entrypoint)
+        self.assertIn("SetEnv CODEX_HOME=", self.workspace_entrypoint)
+        self.assertIn("SetEnv PATH=", self.workspace_entrypoint)
+        self.assertIn('"$home_dir/.local/bin:/usr/local/bin:/usr/bin:/bin"', self.workspace_entrypoint)
         self.assertIn("WORKSPACE_AUTHORIZED_KEYS_BASE64=${workspace_ssh_public_keys_base64}", self.workspace_env)
+        self.assertIn("WORKSPACE_FUSE_ENABLED=${workspace_fuse_enabled}", self.workspace_env)
         self.assertIn("CODEX_HOME=/home/${workspace_username}/.codex", self.workspace_env)
+        self.assertIn("workspace_fuse_enabled=${workspace_fuse_enabled}", self.diagnostics)
+        self.assertIn("fusermount3=present", self.diagnostics)
+        self.assertIn("rclone=present", self.diagnostics)
+
+    def test_workspace_codex_auto_updater_uses_the_canonical_user_install_and_fails_open_at_startup(self) -> None:
+        self.assertIn("COPY workspace-codex-update.sh", self.workspace_dockerfile)
+        self.assertIn("COPY workspace-codex-control.py", self.workspace_dockerfile)
+        self.assertIn("python3-pip", self.workspace_dockerfile)
+        self.assertIn("python3-venv", self.workspace_dockerfile)
+        self.assertNotIn("pip install", self.workspace_dockerfile)
+        self.assertIn("chmod 0755 /usr/local/libexec/agent-stack-workspace-codex-update", self.workspace_dockerfile)
+        self.assertIn("chmod 0755 /usr/local/libexec/agent-stack-workspace-codex-control", self.workspace_dockerfile)
+        self.assertIn("WORKSPACE_CODEX_AUTO_UPDATE_ENABLED", self.workspace_env)
+        self.assertIn("WORKSPACE_CODEX_AUTO_RECOVER_INTERRUPTED_TURNS", self.workspace_env)
+        self.assertIn('agent-stack-workspace-codex-update --initialize "$username"', self.workspace_entrypoint)
+        self.assertIn("starting SSH without blocking access", self.workspace_entrypoint)
+        self.assertLess(
+            self.workspace_entrypoint.index("agent-stack-workspace-codex-update --initialize"),
+            self.workspace_entrypoint.index("exec /usr/sbin/sshd -D -e"),
+        )
+        self.assertNotIn("--startup", self.workspace_entrypoint)
+        self.assertIn('if [ "$(id -u)" -ne 0 ]', self.workspace_codex_update)
+        self.assertIn('current_link="$standalone_dir/current"', self.workspace_codex_update)
+        self.assertIn('pinned_current=/opt/codex/packages/standalone/current', self.workspace_codex_update)
+        self.assertIn('expected="$current_link/codex"', self.workspace_codex_update)
+        self.assertIn('ln -s "$expected" "$local_codex"', self.workspace_codex_update)
+        self.assertIn('ln -s bin/codex "$direct"', self.workspace_codex_update)
+        self.assertIn('exec runuser -u "$workspace_user" --', self.workspace_codex_update)
+        self.assertIn('"$0" "$inner_mode" "$workspace_user"', self.workspace_codex_update)
+        self.assertIn("--normalize-user)", self.workspace_codex_update)
+        self.assertIn("unmanaged workspace Codex launcher would be overwritten; refusing", self.workspace_codex_update)
+        self.assertNotIn("api.github.com/repos/openai/codex", self.workspace_codex_update)
+        self.assertNotIn("pgrep", self.workspace_codex_update)
+
+        self.assertIn('ALLOWED_ACTIONS: Final = {"preflight", "snapshot", "update", "restart-verify", "rollback", "recover"}', self.workspace_codex_control)
+        self.assertIn('run_codex(ctx, "update", timeout=240)', self.workspace_codex_control)
+        self.assertIn('"app-server", "proxy", "--sock"', self.workspace_codex_control)
+        self.assertIn("RECOVERY_PROMPT", self.workspace_codex_control)
+        self.assertIn("clientUserMessageId", self.workspace_codex_control)
+        self.assertIn('"thread/turns/list"', self.workspace_codex_control)
+        self.assertIn('"sortDirection": "desc"', self.workspace_codex_control)
+        self.assertNotIn("shell=True", self.workspace_codex_control)
+
+    def test_workspace_codex_auto_updater_uses_fixed_retry_slots_without_workspace_privilege_escalation(self) -> None:
+        self.assertIn("retry_offsets=(0 300 900 2100)", self.workspace_update_host)
+        self.assertIn("wait_until_epoch", self.workspace_update_host)
+        self.assertIn("return 75", self.workspace_update_host)
+        self.assertIn("restart-verify", self.workspace_update_host)
+        self.assertIn("rollback_control_call", self.workspace_update_host)
+        self.assertNotIn("pgrep", self.workspace_update_host)
+        self.assertNotIn("workspace Codex is active", self.workspace_update_host)
+        self.assertIn("docker exec --user root", self.workspace_update_host)
+        self.assertIn('--user "$workspace_user"', self.workspace_update_host)
+        self.assertNotIn("sudo", self.workspace_update_host)
+        self.assertNotIn("docker.sock", self.workspace_update_host)
+        self.assertIn("TimeoutStartSec=50min", self.workspace_update_service)
+        self.assertIn("OnCalendar=*-*-* ${workspace_codex_auto_update_time}:00 ${workspace_codex_auto_update_timezone}", self.workspace_update_timer)
+        self.assertIn("Persistent=false", self.workspace_update_timer)
+        self.assertIn("AccuracySec=1s", self.workspace_update_timer)
+        self.assertIn("RandomizedDelaySec=0", self.workspace_update_timer)
+        self.assertNotIn("OnBootSec", self.workspace_update_timer)
+        self.assertIn("configure_workspace_codex_auto_update", self.installer)
+        self.assertIn("workspace-codex-update.sh", self.installer)
+        self.assertIn("workspace-codex-control.py", self.installer)
+        self.assertIn("backup_workspace_image", self.installer)
+        self.assertIn("restore_workspace_image", self.installer)
+        self.assertIn("all_ready=1", self.installer)
+        self.assertIn('test "$(command -v codex)" = "$HOME/.local/bin/codex"', self.installer)
+        self.assertIn('test "$actual" = "$expected"', self.installer)
+        self.assertIn("agent-stack-workspace-codex-update.timer", self.installer)
+        self.assertIn("configured timezone is not installed", self.installer)
+        self.assertIn("backup_workspace_codex_auto_update_host", self.installer)
+        updater_install = self.installer[
+            self.installer.index("configure_workspace_codex_auto_update() {") : self.installer.index(
+                "wait_agent_stack_initial_restart()"
+            )
+        ]
+        self.assertLess(
+            updater_install.index("systemctl daemon-reload"), updater_install.index('systemctl reset-failed "$unit"')
+        )
+        self.assertLess(
+            updater_install.index('systemctl reset-failed "$unit"'), updater_install.index("systemctl enable --now")
+        )
+
+    def test_workspace_codex_update_bridge_has_only_queue_and_status_operations(self) -> None:
+        self.assertIn("agent-stack-diagnostics codex-update", self.diagnostics)
+        self.assertIn("agent-stack-diagnostics codex-update status", self.diagnostics)
+        self.assertIn("systemctl start --no-block agent-stack-workspace-codex-update.service", self.diagnostics)
+        self.assertIn("show_workspace_codex_update_status", self.diagnostics)
+        self.assertIn("case $# in", self.diagnostics)
+        self.assertIn("CODEX_HOME=/home/${workspace_username}/.codex", self.diagnostics)
+        self.assertIn("PATH=/home/${workspace_username}/.local/bin:/usr/local/bin:/usr/bin:/bin", self.diagnostics)
+        self.assertNotIn('if [ -r "$HOME/.bashrc" ]; then . "$HOME/.bashrc"', self.diagnostics)
+        self.assertNotIn("docker.sock", self.workspace_entrypoint)
+
+    def test_workspace_installer_prepares_persistent_host_keys(self) -> None:
+        self.assertIn('install -d -m 0755 "$app/data/workspace/home"', self.installer)
+        self.assertIn('install -d -m 0700 -o root -g root "$app/data/workspace/ssh-host-keys"', self.installer)
 
     def test_workspace_drive_fuse_is_foreground_supervised_and_fail_closed(self) -> None:
         self.assertIn("%{ if workspace_drive_fuse_enabled }", self.compose)
@@ -246,7 +425,10 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("%{ if tailscale_sidecar_enabled }", self.compose)
         self.assertIn("[ \"${tailscale_sidecar_enabled}\" = \"true\" ]", self.installer)
         self.assertIn("[ \"${tailscale_host_enabled}\" = \"true\" ]", self.installer)
-        self.assertIn("tailscale logout || true", self.host_tailscale)
+        self.assertIn(".Self.Online == true", self.host_tailscale)
+        self.assertIn("Already online; keeping current login.", self.host_tailscale)
+        self.assertIn('tailscale set --hostname="$TAILSCALE_HOSTNAME" --accept-routes || true', self.host_tailscale)
+        self.assertNotIn("tailscale logout || true", self.host_tailscale)
         self.assertIn("tailscale serve --bg 127.0.0.1:18789", self.host_tailscale)
 
 
@@ -258,6 +440,7 @@ class RuntimeProvisioningContractTest(unittest.TestCase):
     def test_terraform_waits_for_cloud_init_and_provisions_as_admin(self) -> None:
         self.assertIn('resource "terraform_data" "runtime_apply"', self.main_tf)
         self.assertIn('"sudo cloud-init status --wait"', self.main_tf)
+        self.assertIn("host        = local.admin_ssh_host", self.main_tf)
         self.assertIn("user        = var.admin_username", self.main_tf)
         self.assertNotIn('user        = "root"', self.main_tf)
 

@@ -229,6 +229,10 @@ Only ask follow-up questions here for:
 
 - `openclaw_config_mode`
 - `openclaw_version`
+- `workspace_codex_release` (when live updates are enabled, it must be a stable `x.y.z` image fallback)
+- `workspace_codex_auto_update_enabled` (opt in only when the workspace service is enabled; it runs a hard maintenance cutover that may interrupt active Codex work when a new CLI release requires an app-server restart, never at startup or after an idle wait)
+- `workspace_codex_auto_update_timezone` and `workspace_codex_auto_update_time` (default: `04:00 America/New_York`; technical retries are +5, +15, and +35 minutes after the configured cutover)
+- `workspace_codex_auto_recover_interrupted_turns` (leave disabled for the first approved rollout; enable only in a second targeted approved apply after the root-admin-only disposable-thread desktop E2E probe passes)
 - `openclaw_node_options`
 - `openclaw_swap_size_mb`
 - `openclaw_health_start_period_seconds`
@@ -256,6 +260,8 @@ Only ask follow-up questions here for:
 - `external_postgres_ssl_enabled`
 - `vpn_enabled`
 - `vpn_provider`
+- `vpn_nordvpn_token`
+- `vpn_nordvpn_connect_target`
 - `vpn_openvpn_config_url`
 - `vpn_username`
 - `vpn_password`
@@ -265,6 +271,22 @@ Only ask follow-up questions here for:
 - `acme_email`
 - `ui_auth_username`
 - `ui_auth_password`
+
+VPN follow-up rules:
+
+- Offer `nordvpn_openvpn` for the backward-compatible manual configuration and `nordvpn_nordlynx` for the native Linux app.
+- For `nordvpn_openvpn`, collect the HTTPS config URL plus Nord manual service username and password.
+- For `nordvpn_nordlynx`, collect a non-expiring Nord access token as a sensitive value and optionally a country/server target such as `United_States`.
+- Both providers require at least one public/admin fallback CIDR in `vpn_bypass_cidrs`.
+- Never put `100.64.0.0/10` or another overlapping CIDR in `vpn_bypass_cidrs`; the runtime manager preserves Tailscale separately.
+
+Workspace Codex updater follow-up rules:
+
+- Explain that the scheduled job uses the official `codex update` command at the selected daily cutover. It does not update at startup, wait for idle time, or poll running Codex processes. It proceeds only when the canonical Codex managed daemon is present; it refuses an unmanaged server or competing legacy hourly updater rather than taking either one over.
+- Explain that only pre-restart technical failures retry, at +5, +15, and +35 minutes after the selected time. A successful new version causes an intentional app-server restart, which can interrupt active work.
+- Keep automatic interrupted-turn recovery disabled on the first approved rollout. The desktop E2E probe must use a root-admin-only disposable thread; enable recovery only through a second targeted approved apply after it succeeds.
+- Explain the recovery limit before enabling it: it can append one new safety-constrained turn for a proven interrupted turn, but cannot resume the in-flight turn or replay its prior prompt/commands. A turn created between the snapshot and restart may not be recovered.
+- The workspace image includes Python 3, `pip`, and `venv`, but no third-party packages are installed during build. Recommend `python3 -m venv ~/.venvs/<name>` for workspace-user packages.
 
 Explain `openclaw_config_mode` only if the user wants to override it:
 

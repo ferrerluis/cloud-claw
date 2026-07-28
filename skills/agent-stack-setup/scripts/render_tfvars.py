@@ -351,20 +351,50 @@ def build_values(specs: list[VariableSpec], answers: dict[str, Any]) -> dict[str
             "external_postgres_database, external_postgres_user, and external_postgres_password"
         )
 
+    workspace_services = resolved["enabled_services"]
+    workspace_auto_update = resolved["workspace_codex_auto_update_enabled"]
+    workspace_recovery = resolved["workspace_codex_auto_recover_interrupted_turns"]
+    workspace_release = str(resolved["workspace_codex_release"]).strip()
+    if workspace_auto_update:
+        if "workspace" not in workspace_services:
+            fail("workspace_codex_auto_update_enabled requires enabled_services to include workspace")
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", workspace_release):
+            fail("workspace_codex_auto_update_enabled requires workspace_codex_release to be a stable x.y.z fallback")
+    if workspace_recovery and not workspace_auto_update:
+        fail("workspace_codex_auto_recover_interrupted_turns requires workspace_codex_auto_update_enabled")
+    if workspace_recovery and "workspace" not in workspace_services:
+        fail("workspace_codex_auto_recover_interrupted_turns requires enabled_services to include workspace")
+
     if resolved["vpn_enabled"]:
-        if resolved["vpn_provider"] != "nordvpn_openvpn":
-            fail("vpn_provider must be nordvpn_openvpn")
-        if not str(resolved["vpn_openvpn_config_url"]).strip().startswith("https://"):
-            fail("vpn_openvpn_config_url must be an https:// URL when vpn_enabled is true")
-        if not str(resolved["vpn_username"]).strip():
-            fail("vpn_username is required when vpn_enabled is true")
-        if not str(resolved["vpn_password"]).strip():
-            fail("vpn_password is required when vpn_enabled is true")
+        if resolved["vpn_provider"] == "nordvpn_openvpn":
+            if not str(resolved["vpn_openvpn_config_url"]).strip().startswith("https://"):
+                fail("vpn_openvpn_config_url must be an https:// URL for nordvpn_openvpn")
+            if not str(resolved["vpn_username"]).strip():
+                fail("vpn_username is required for nordvpn_openvpn")
+            if not str(resolved["vpn_password"]).strip():
+                fail("vpn_password is required for nordvpn_openvpn")
+        elif resolved["vpn_provider"] == "nordvpn_nordlynx":
+            if not str(resolved["vpn_nordvpn_token"]).strip():
+                fail("vpn_nordvpn_token is required for nordvpn_nordlynx")
         if not resolved["vpn_bypass_cidrs"]:
-            fail("vpn_bypass_cidrs must include at least one access CIDR when vpn_enabled is true")
+            fail("vpn_bypass_cidrs must include at least one non-Tailscale access CIDR when vpn_enabled is true")
         invalid_vpn_bypass_cidrs = [cidr for cidr in resolved["vpn_bypass_cidrs"] if not is_ipv4_cidr(str(cidr))]
         if invalid_vpn_bypass_cidrs:
             fail(f"vpn_bypass_cidrs must contain IPv4 CIDRs: {', '.join(invalid_vpn_bypass_cidrs)}")
+        tailscale_network = ipaddress.IPv4Network("100.64.0.0/10")
+        tailscale_bypass_cidrs = [
+            cidr
+            for cidr in resolved["vpn_bypass_cidrs"]
+            if ipaddress.IPv4Network(str(cidr), strict=False).overlaps(tailscale_network)
+        ]
+        if tailscale_bypass_cidrs:
+            fail(
+                "vpn_bypass_cidrs must not contain or overlap Tailscale 100.64.0.0/10; "
+                "AgentStack preserves Tailscale separately"
+            )
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]*", str(resolved["vpn_nordvpn_connect_target"]).strip()):
+        fail("vpn_nordvpn_connect_target may contain only letters, numbers, underscores, and hyphens")
 
     configured_providers = set(resolved["model_providers_enabled"])
     missing_providers = sorted(

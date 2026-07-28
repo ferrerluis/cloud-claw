@@ -9,6 +9,8 @@ locals {
       : one(module.hetzner[*].instance_public_ip)
     )
   )
+  admin_ssh_host     = trimspace(var.admin_ssh_host_override) != "" ? trimspace(var.admin_ssh_host_override) : local.instance_public_ip
+  workspace_ssh_host = trimspace(var.workspace_ssh_host_override) != "" ? trimspace(var.workspace_ssh_host_override) : var.project_name
 
   openclaw_url = !local.openclaw_enabled ? "disabled" : (
     var.public_domain_enabled && local.resolved_openclaw_domain != ""
@@ -23,13 +25,13 @@ locals {
   hermes_url = !local.hermes_enabled ? "disabled" : (
     var.public_domain_enabled && local.resolved_hermes_domain != ""
     ? "https://${local.resolved_hermes_domain}"
-    : "http://localhost:9119  (after running: ssh -L 9119:127.0.0.1:9119 ${var.admin_username}@${local.instance_public_ip})"
+    : "http://localhost:9119  (after running: ssh -L 9119:127.0.0.1:9119 ${var.admin_username}@${local.admin_ssh_host})"
   )
 
   n8n_url = !local.n8n_enabled ? "disabled" : (
     var.public_domain_enabled && local.resolved_n8n_domain != ""
     ? "https://${local.resolved_n8n_domain}"
-    : "http://localhost:5678  (after running: ssh -L 5678:127.0.0.1:5678 ${var.admin_username}@${local.instance_public_ip})"
+    : "http://localhost:5678  (after running: ssh -L 5678:127.0.0.1:5678 ${var.admin_username}@${local.admin_ssh_host})"
   )
 
   n8n_webhook_url = !local.n8n_enabled ? "disabled" : (
@@ -52,7 +54,7 @@ output "instance_public_ip" {
 
 output "ssh_command" {
   description = "SSH command to connect to the instance."
-  value       = "ssh ${var.admin_username}@${local.instance_public_ip}"
+  value       = "ssh ${var.admin_username}@${local.admin_ssh_host}"
 }
 
 output "repo_ssh_command" {
@@ -67,7 +69,7 @@ output "repo_ssh_config_path" {
 
 output "host_codex_login_command" {
   description = "Run after apply to authenticate the host Codex CLI as the admin user with device auth."
-  value       = var.host_codex_cli_enabled ? "ssh ${var.admin_username}@${local.instance_public_ip} 'codex login --device-auth'" : "disabled"
+  value       = var.host_codex_cli_enabled ? "ssh ${var.admin_username}@${local.admin_ssh_host} 'codex login --device-auth'" : "disabled"
 }
 
 output "resolved_ssh_public_key_source" {
@@ -80,7 +82,7 @@ output "tailscale_note" {
   value = var.tailscale_enabled ? (
     local.openclaw_enabled ? "Tailscale is enabled in ${var.tailscale_mode} mode. Once the instance boots (~2 min), device '${var.project_name}' should appear in your Tailscale admin console. OpenClaw is published with Tailscale Serve: https://${var.project_name} (or use dashboard_url_with_token_import for first-time auto-auth)." : "Tailscale is enabled in ${var.tailscale_mode} mode. OpenClaw is disabled, so no Tailscale Serve route is configured by default."
     ) : (
-    "Tailscale is DISABLED. Use an SSH tunnel to reach the dashboard: ssh -L 18789:127.0.0.1:18789 ${var.admin_username}@${local.instance_public_ip}  then open http://localhost:18789"
+    "Tailscale is DISABLED. Use an SSH tunnel to reach the dashboard: ssh -L 18789:127.0.0.1:18789 ${var.admin_username}@${local.admin_ssh_host}  then open http://localhost:18789"
   )
 }
 
@@ -104,12 +106,12 @@ output "dashboard_url_with_token_import" {
 
 output "workspace_ssh_command" {
   description = "SSH command for the optional workspace container over Tailscale."
-  value       = local.workspace_enabled ? "ssh -p ${var.workspace_ssh_host_port} ${var.workspace_username}@${var.project_name}" : "disabled"
+  value       = local.workspace_enabled ? "ssh -p ${var.workspace_ssh_host_port} ${var.workspace_username}@${local.workspace_ssh_host}" : "disabled"
 }
 
 output "workspace_codex_login_command" {
   description = "Run inside the optional workspace container to authenticate Codex with device auth."
-  value       = local.workspace_enabled ? "ssh -p ${var.workspace_ssh_host_port} ${var.workspace_username}@${var.project_name} 'codex login --device-auth'" : "disabled"
+  value       = local.workspace_enabled ? "ssh -p ${var.workspace_ssh_host_port} ${var.workspace_username}@${local.workspace_ssh_host} 'codex login --device-auth'" : "disabled"
 }
 
 output "workspace_drive_status_command" {
@@ -126,15 +128,15 @@ output "workspace_note" {
   description = "Workspace access notes."
   value = local.workspace_enabled ? (
     var.tailscale_enabled && var.tailscale_mode == "host"
-    ? "Workspace is enabled. Connect over the tailnet with workspace_ssh_command, then run workspace_codex_login_command. Password auth is enabled only inside the workspace container; no Docker socket is mounted.${var.workspace_drive_fuse_enabled ? " ~/workspace is the fail-closed Google Drive FUSE mount; use workspace_drive_status_command to verify it." : ""}"
-    : "Workspace is enabled, but the intended supported access path is tailscale_enabled=true with tailscale_mode=\"host\"."
+    ? "Workspace is enabled. Connect over the tailnet with workspace_ssh_command, then run workspace_codex_login_command. Password auth is enabled only inside the workspace container; no Docker socket is mounted.${var.workspace_drive_fuse_enabled ? " ~/workspace is the fail-closed Google Drive FUSE mount; use workspace_drive_status_command to verify it." : ""}${var.workspace_codex_auto_update_enabled ? " Root-managed stable Codex maintenance runs daily at ${var.workspace_codex_auto_update_time} ${var.workspace_codex_auto_update_timezone}; a new CLI release can interrupt active work when the app server restarts. Use agent-stack-diagnostics codex-update status to inspect it.${var.workspace_codex_auto_recover_interrupted_turns ? " Proven interrupted turns receive one safety-constrained recovery prompt." : " Automatic interrupted-turn recovery is disabled."}" : ""}${var.workspace_fuse_enabled ? " FUSE is enabled for user-space mounts such as rclone mount." : ""}"
+    : "Workspace is enabled, but the intended supported access path is tailscale_enabled=true with tailscale_mode=\"host\".${var.workspace_codex_auto_update_enabled ? " Root-managed stable Codex maintenance runs daily at ${var.workspace_codex_auto_update_time} ${var.workspace_codex_auto_update_timezone}; a new CLI release can interrupt active work when the app server restarts. Use agent-stack-diagnostics codex-update status to inspect it.${var.workspace_codex_auto_recover_interrupted_turns ? " Proven interrupted turns receive one safety-constrained recovery prompt." : " Automatic interrupted-turn recovery is disabled."}" : ""}${var.workspace_fuse_enabled ? " FUSE is enabled for user-space mounts such as rclone mount." : ""}"
   ) : "disabled"
 }
 
 output "vpn_note" {
   description = "Host VPN egress status and diagnostics hint."
   value = var.vpn_enabled ? (
-    "Host VPN is enabled with provider ${var.vpn_provider}. Docker service egress should route through agent-stack-vpn.service; verify with: agent-stack-diagnostics health vpn"
+    "Host VPN is enabled with provider ${var.vpn_provider}. Docker service egress should route through agent-stack-vpn.service; verify with: agent-stack-diagnostics health vpn${var.vpn_provider == "nordvpn_nordlynx" ? ". After fresh SSH and reboot checks pass, disarm the canary rollback with: sudo /opt/agent-stack/agent-stack-vpn confirm" : ""}"
   ) : "disabled"
 }
 
@@ -145,7 +147,7 @@ output "gateway_token" {
 
 output "pair_latest_command" {
   description = "Run after opening dashboard_url_with_token_import to approve the latest pending paired-device request."
-  value       = local.openclaw_enabled ? "ssh ${var.admin_username}@${local.instance_public_ip} 'docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789'" : "disabled"
+  value       = local.openclaw_enabled ? "ssh ${var.admin_username}@${local.admin_ssh_host} 'docker compose -f /opt/agent-stack/docker-compose.yml exec -T openclaw openclaw devices approve --latest --token ${nonsensitive(local.resolved_gateway_token)} --url ws://127.0.0.1:18789'" : "disabled"
 }
 
 output "repo_pair_latest_command" {
@@ -155,12 +157,12 @@ output "repo_pair_latest_command" {
 
 output "whatsapp_login_command" {
   description = "Interactive command to link WhatsApp by scanning QR from your terminal."
-  value       = local.openclaw_enabled ? "ssh -t ${var.admin_username}@${local.instance_public_ip} 'docker compose -f /opt/agent-stack/docker-compose.yml exec openclaw openclaw channels login --channel whatsapp --verbose'" : "disabled"
+  value       = local.openclaw_enabled ? "ssh -t ${var.admin_username}@${local.admin_ssh_host} 'docker compose -f /opt/agent-stack/docker-compose.yml exec openclaw openclaw channels login --channel whatsapp --verbose'" : "disabled"
 }
 
 output "bootstrap_log_command" {
   description = "Command to watch the bootstrap log on the server."
-  value       = "ssh ${var.admin_username}@${local.instance_public_ip} 'tail -f /var/log/openclaw-bootstrap.log'"
+  value       = "ssh ${var.admin_username}@${local.admin_ssh_host} 'tail -f /var/log/openclaw-bootstrap.log'"
 }
 
 output "repo_bootstrap_log_command" {

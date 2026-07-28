@@ -116,9 +116,44 @@ fi
 chown "$username:$username" "$authorized_keys_file"
 chmod 0600 "$authorized_keys_file"
 
+host_key_dir="$${WORKSPACE_HOST_KEY_DIR:-/var/lib/agent-stack-workspace/ssh-host-keys}"
+install -d -m 0700 -o root -g root "$host_key_dir"
+
+ensure_host_key() {
+  local type="$1"
+  local bits="$${2:-}"
+  local key="$host_key_dir/ssh_host_$${type}_key"
+
+  if [ ! -f "$key" ]; then
+    if [ -n "$bits" ]; then
+      ssh-keygen -q -t "$type" -b "$bits" -N "" -f "$key"
+    else
+      ssh-keygen -q -t "$type" -N "" -f "$key"
+    fi
+  fi
+  if [ ! -f "$key.pub" ]; then
+    ssh-keygen -y -f "$key" >"$key.pub"
+  fi
+
+  chown root:root "$key" "$key.pub"
+  chmod 0600 "$key"
+  chmod 0644 "$key.pub"
+}
+
+ensure_host_key ed25519
+ensure_host_key ecdsa
+ensure_host_key rsa 4096
+
+cat >/etc/ssh/sshd_config.d/98-agent-stack-workspace-host-keys.conf <<EOF
+HostKey $host_key_dir/ssh_host_ed25519_key
+HostKey $host_key_dir/ssh_host_ecdsa_key
+HostKey $host_key_dir/ssh_host_rsa_key
+EOF
+chmod 0644 /etc/ssh/sshd_config.d/98-agent-stack-workspace-host-keys.conf
+
 cat >/etc/profile.d/agent-stack-workspace.sh <<EOF
 export CODEX_HOME="$home_dir/.codex"
-export PATH="/usr/local/bin:\$PATH"
+export PATH="$home_dir/.local/bin:/usr/local/bin:\$PATH"
 EOF
 chmod 0644 /etc/profile.d/agent-stack-workspace.sh
 
@@ -133,6 +168,10 @@ X11Forwarding no
 PermitTunnel no
 EOF
 printf 'SetEnv CODEX_HOME=%s\n' "$home_dir/.codex" >> /etc/ssh/sshd_config.d/99-agent-stack-workspace.conf
+# SSH commands do not source /etc/profile.d.  Keep their Codex resolution
+# identical to an interactive workspace shell so `ssh workspace codex` never
+# accidentally selects the image fallback in /usr/local/bin.
+printf 'SetEnv PATH=%s\n' "$home_dir/.local/bin:/usr/local/bin:/usr/bin:/bin" >> /etc/ssh/sshd_config.d/99-agent-stack-workspace.conf
 
 cat >/usr/local/bin/agent-stack-diagnostics <<'EOF'
 #!/usr/bin/env bash
@@ -155,9 +194,31 @@ exec ssh \
 EOF
 chmod 0755 /usr/local/bin/agent-stack-diagnostics
 
-ssh-keygen -A
+start_workspace_drive_mount() {
+  local helper="$home_dir/.local/bin/workspace-drive-mount"
+  local log_dir="$home_dir/.cache/rclone"
+  local log_file="$log_dir/workspace-mount-startup.log"
+
+  [ "$${WORKSPACE_FUSE_ENABLED:-false}" = "true" ] || return 0
+  [ -x "$helper" ] || return 0
+
+  install -d -m 0700 -o "$username" -g "$username" "$log_dir"
+  echo "[workspace] Starting workspace Drive mount via $helper..."
+  if su -s /bin/bash "$username" -c "$helper start" </dev/null >>"$log_file" 2>&1; then
+    echo "[workspace] Workspace Drive mount is active."
+  else
+    echo "[workspace] Workspace Drive mount did not start; continuing SSH startup. See $log_file." >&2
+  fi
+}
+
+if [ "$${WORKSPACE_CODEX_AUTO_UPDATE_ENABLED:-false}" = "true" ]; then
+  if ! /usr/local/libexec/agent-stack-workspace-codex-update --initialize "$username"; then
+    echo "[workspace] WARNING: could not initialize the user-scoped Codex fallback; starting SSH without blocking access." >&2
+  fi
+fi
 
 if [ "$drive_enabled" != "true" ]; then
+  start_workspace_drive_mount
   trap - EXIT INT TERM
   exec /usr/sbin/sshd -D -e
 fi

@@ -105,6 +105,91 @@ class RenderTfvarsTest(unittest.TestCase):
         self.assertIn("openclaw_swap_size_mb = 0", rendered)
         self.assertIn("openclaw_health_start_period_seconds = 120", rendered)
         self.assertIn("openclaw_health_retries = 8", rendered)
+        self.assertIn('workspace_codex_release = "0.145.0"', rendered)
+        self.assertIn("workspace_codex_auto_update_enabled = false", rendered)
+        self.assertIn('workspace_codex_auto_update_timezone = "America/New_York"', rendered)
+        self.assertIn('workspace_codex_auto_update_time = "04:00"', rendered)
+        self.assertIn("workspace_codex_auto_recover_interrupted_turns = false", rendered)
+
+    def test_renders_workspace_codex_hard_cutover_overrides(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "aws",
+                "aws_access_key": "AKIAREALKEY123456",
+                "aws_secret_key": "super-secret",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_auth_key": "tskey-auth-real-value",
+                "enabled_services": ["openclaw", "workspace"],
+                "workspace_password": "workspace-password",
+                "workspace_codex_auto_update_enabled": True,
+                "workspace_codex_auto_update_timezone": "Europe/London",
+                "workspace_codex_auto_update_time": "03:30",
+                "workspace_codex_auto_recover_interrupted_turns": True,
+            }
+        )
+        self.assertIn("workspace_codex_auto_update_enabled = true", rendered)
+        self.assertIn('workspace_codex_auto_update_timezone = "Europe/London"', rendered)
+        self.assertIn('workspace_codex_auto_update_time = "03:30"', rendered)
+        self.assertIn("workspace_codex_auto_recover_interrupted_turns = true", rendered)
+
+    def test_rejects_workspace_codex_auto_update_without_workspace_or_stable_fallback(self) -> None:
+        result, _ = run_render(
+            {
+                "cloud_provider": "aws",
+                "aws_access_key": "AKIAREALKEY123456",
+                "aws_secret_key": "super-secret",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_auth_key": "tskey-auth-real-value",
+                "workspace_codex_auto_update_enabled": True,
+                "workspace_codex_release": "0.145.0-beta.1",
+            },
+            expect_success=False,
+        )
+        self.assertIn("requires enabled_services to include workspace", result.stderr)
+
+        result, _ = run_render(
+            {
+                "cloud_provider": "aws",
+                "aws_access_key": "AKIAREALKEY123456",
+                "aws_secret_key": "super-secret",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_auth_key": "tskey-auth-real-value",
+                "enabled_services": ["openclaw", "workspace"],
+                "workspace_password": "workspace-password",
+                "workspace_codex_auto_update_enabled": True,
+                "workspace_codex_release": "0.145.0-beta.1",
+            },
+            expect_success=False,
+        )
+        self.assertIn("stable x.y.z fallback", result.stderr)
+
+    def test_rejects_workspace_codex_recovery_without_the_updater(self) -> None:
+        result, _ = run_render(
+            {
+                "cloud_provider": "aws",
+                "aws_access_key": "AKIAREALKEY123456",
+                "aws_secret_key": "super-secret",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_auth_key": "tskey-auth-real-value",
+                "enabled_services": ["openclaw", "workspace"],
+                "workspace_password": "workspace-password",
+                "workspace_codex_auto_recover_interrupted_turns": True,
+            },
+            expect_success=False,
+        )
+        self.assertIn("requires workspace_codex_auto_update_enabled", result.stderr)
 
     def test_renders_fresh_digitalocean_fixture(self) -> None:
         _, rendered = run_render(
@@ -201,6 +286,67 @@ class RenderTfvarsTest(unittest.TestCase):
         )
         self.assertIn("vpn_bypass_cidrs", result.stderr)
 
+    def test_renders_nordlynx_host_vpn_fixture(self) -> None:
+        _, rendered = run_render(
+            {
+                "cloud_provider": "hetzner",
+                "hcloud_token": "real-hcloud-token",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_enabled": False,
+                "vpn_enabled": True,
+                "vpn_provider": "nordvpn_nordlynx",
+                "vpn_nordvpn_token": "real-nord-access-token",
+                "vpn_nordvpn_connect_target": "United_States",
+                "vpn_bypass_cidrs": ["203.0.113.5/32"],
+            }
+        )
+        self.assertIn('vpn_provider = "nordvpn_nordlynx"', rendered)
+        self.assertIn('vpn_nordvpn_token = "real-nord-access-token"', rendered)
+        self.assertIn('vpn_nordvpn_connect_target = "United_States"', rendered)
+        self.assertIn('vpn_openvpn_config_url = ""', rendered)
+        self.assertIn('vpn_username = ""', rendered)
+        self.assertIn('vpn_password = ""', rendered)
+
+    def test_rejects_nordlynx_without_token(self) -> None:
+        result, _ = run_render(
+            {
+                "cloud_provider": "hetzner",
+                "hcloud_token": "real-hcloud-token",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_enabled": False,
+                "vpn_enabled": True,
+                "vpn_provider": "nordvpn_nordlynx",
+                "vpn_bypass_cidrs": ["203.0.113.5/32"],
+            },
+            expect_success=False,
+        )
+        self.assertIn("vpn_nordvpn_token is required", result.stderr)
+
+    def test_rejects_tailscale_vpn_bypass_cidr(self) -> None:
+        result, _ = run_render(
+            {
+                "cloud_provider": "hetzner",
+                "hcloud_token": "real-hcloud-token",
+                "gemini_api_key": "real-gemini-key",
+                "model_providers_enabled": ["google"],
+                "default_model": "google/gemini-3-flash-preview",
+                "fallback_models": [],
+                "tailscale_enabled": False,
+                "vpn_enabled": True,
+                "vpn_provider": "nordvpn_nordlynx",
+                "vpn_nordvpn_token": "real-nord-access-token",
+                "vpn_bypass_cidrs": ["100.64.0.0/10"],
+            },
+            expect_success=False,
+        )
+        self.assertIn("must not contain or overlap Tailscale 100.64.0.0/10", result.stderr)
+
     def test_renders_existing_volume_fixture(self) -> None:
         _, rendered = run_render(
             {
@@ -257,6 +403,11 @@ class RenderTfvarsTest(unittest.TestCase):
             "openclaw_health_retries",
             "openai_auth_mode",
             "postgres_image",
+            "workspace_codex_release",
+            "workspace_codex_auto_update_enabled",
+            "workspace_codex_auto_update_timezone",
+            "workspace_codex_auto_update_time",
+            "workspace_codex_auto_recover_interrupted_turns",
             "vpn_enabled",
             "vpn_provider",
             "vpn_disable_ipv6",

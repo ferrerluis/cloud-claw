@@ -93,6 +93,9 @@ services:
       - /opt/agent-stack/data/workspace/home:/home/${workspace_username}
 %{ if workspace_drive_fuse_enabled }
       - /opt/agent-stack/workspace-rclone:/etc/rclone
+%{ endif }
+      - /opt/agent-stack/data/workspace/ssh-host-keys:/var/lib/agent-stack-workspace/ssh-host-keys
+%{ if workspace_drive_fuse_enabled || workspace_fuse_enabled }
     cap_add:
       - SYS_ADMIN
     devices:

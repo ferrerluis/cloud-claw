@@ -30,30 +30,46 @@ override_module {
 }
 
 variables {
-  project_name                  = "agent-stack"
-  admin_password                = ""
-  admin_password_ssh_scope      = "disabled"
-  ssh_public_key                = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
-  repo_ssh_private_key_path     = "tests/fixtures/fake_ssh_private_key.txt"
-  generate_repo_ssh_config      = false
-  aws_access_key                = "AKIAAGENTSTACKTESTS"
-  aws_secret_key                = "agent-stack-tests"
-  do_token                      = "do-agent-stack-tests"
-  hcloud_token                  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  model_providers_enabled       = ["google"]
-  default_model                 = "google/gemini-3-flash-preview"
-  fallback_models               = []
-  gemini_api_key                = "gemini-agent-stack-tests"
-  gateway_token                 = "gateway-token-agent-stack-tests"
-  hermes_api_server_key         = "hermes-key-agent-stack-tests"
-  n8n_encryption_key            = "n8n-key-agent-stack-tests"
-  postgres_password             = "postgres-password-agent-stack-tests"
-  ui_auth_password              = "ui-password-agent-stack-tests"
-  enabled_services              = ["openclaw", "hermes", "n8n"]
-  tailscale_enabled             = true
-  tailscale_mode                = "sidecar"
-  tailscale_auth_key            = "tskey-auth-agent-stack-tests"
-  openai_codex_auth_json_base64 = ""
+  project_name                                   = "agent-stack"
+  admin_ssh_host_override                        = ""
+  workspace_ssh_host_override                    = ""
+  admin_password                                 = ""
+  admin_password_ssh_scope                       = "disabled"
+  ssh_public_key                                 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
+  repo_ssh_private_key_path                      = "tests/fixtures/fake_ssh_private_key.txt"
+  generate_repo_ssh_config                       = false
+  aws_access_key                                 = "AKIAAGENTSTACKTESTS"
+  aws_secret_key                                 = "agent-stack-tests"
+  do_token                                       = "do-agent-stack-tests"
+  hcloud_token                                   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  model_providers_enabled                        = ["google"]
+  default_model                                  = "google/gemini-3-flash-preview"
+  fallback_models                                = []
+  gemini_api_key                                 = "gemini-agent-stack-tests"
+  gateway_token                                  = "gateway-token-agent-stack-tests"
+  hermes_api_server_key                          = "hermes-key-agent-stack-tests"
+  n8n_encryption_key                             = "n8n-key-agent-stack-tests"
+  postgres_password                              = "postgres-password-agent-stack-tests"
+  ui_auth_password                               = "ui-password-agent-stack-tests"
+  enabled_services                               = ["openclaw", "hermes", "n8n"]
+  workspace_codex_release                        = "0.145.0"
+  workspace_codex_auto_update_enabled            = false
+  workspace_codex_auto_update_timezone           = "America/New_York"
+  workspace_codex_auto_update_time               = "04:00"
+  workspace_codex_auto_recover_interrupted_turns = false
+  workspace_fuse_enabled                         = false
+  vpn_enabled                                    = false
+  vpn_provider                                   = "nordvpn_openvpn"
+  vpn_nordvpn_token                              = ""
+  vpn_nordvpn_connect_target                     = ""
+  vpn_openvpn_config_url                         = ""
+  vpn_username                                   = ""
+  vpn_password                                   = ""
+  vpn_bypass_cidrs                               = []
+  tailscale_enabled                              = true
+  tailscale_mode                                 = "sidecar"
+  tailscale_auth_key                             = "tskey-auth-agent-stack-tests"
+  openai_codex_auth_json_base64                  = ""
 }
 
 run "tailscale_private_outputs" {
@@ -90,29 +106,45 @@ run "workspace_host_outputs" {
   state_key = "workspace-host-outputs"
 
   variables {
-    cloud_provider                       = "hetzner"
-    enabled_services                     = ["openclaw", "workspace"]
-    workspace_username                   = "ferrerluis"
-    workspace_password                   = "workspace-password-agent-stack-tests"
-    workspace_ssh_host_port              = 2222
-    workspace_drive_fuse_enabled         = true
-    workspace_drive_rclone_config_base64 = "W3dvcmtzcGFjZS1kcml2ZV0KdHlwZSA9IGRyaXZlCmNsaWVudF9pZCA9IHRlc3QtY2xpZW50CmNsaWVudF9zZWNyZXQgPSB0ZXN0LXNlY3JldAp0b2tlbiA9IHt9Cg=="
-    tailscale_mode                       = "host"
+    cloud_provider                                 = "hetzner"
+    admin_ssh_host_override                        = "admin-tailnet.example.ts.net"
+    workspace_ssh_host_override                    = "workspace-tailnet.example.ts.net"
+    enabled_services                               = ["openclaw", "workspace"]
+    workspace_username                             = "ferrerluis"
+    workspace_password                             = "workspace-password-agent-stack-tests"
+    workspace_ssh_host_port                        = 2222
+    workspace_codex_auto_update_enabled            = true
+    workspace_codex_auto_update_timezone           = "America/New_York"
+    workspace_codex_auto_update_time               = "04:00"
+    workspace_codex_auto_recover_interrupted_turns = false
+    workspace_drive_fuse_enabled                   = true
+    workspace_drive_rclone_config_base64           = "W3dvcmtzcGFjZS1kcml2ZV0KdHlwZSA9IGRyaXZlCmNsaWVudF9pZCA9IHRlc3QtY2xpZW50CmNsaWVudF9zZWNyZXQgPSB0ZXN0LXNlY3JldAp0b2tlbiA9IHt9Cg=="
+    tailscale_mode                                 = "host"
   }
 
   assert {
-    condition     = output.workspace_ssh_command == "ssh -p 2222 ferrerluis@agent-stack"
-    error_message = "Workspace SSH command should use the configured username, host port, and Tailscale device name."
+    condition     = output.ssh_command == "ssh admin@admin-tailnet.example.ts.net"
+    error_message = "Admin SSH command should use the override host when one is configured."
   }
 
   assert {
-    condition     = output.workspace_codex_login_command == "ssh -p 2222 ferrerluis@agent-stack 'codex login --device-auth'"
+    condition     = output.host_codex_login_command == "ssh admin@admin-tailnet.example.ts.net 'codex login --device-auth'"
+    error_message = "Host Codex login command should use the override admin SSH host."
+  }
+
+  assert {
+    condition     = output.workspace_ssh_command == "ssh -p 2222 ferrerluis@workspace-tailnet.example.ts.net"
+    error_message = "Workspace SSH command should use the configured username, host port, and workspace host override."
+  }
+
+  assert {
+    condition     = output.workspace_codex_login_command == "ssh -p 2222 ferrerluis@workspace-tailnet.example.ts.net 'codex login --device-auth'"
     error_message = "Workspace Codex login command should use device auth inside the workspace."
   }
 
   assert {
-    condition     = strcontains(output.workspace_note, "no Docker socket is mounted") && !strcontains(output.workspace_note, "workspace-password-agent-stack-tests")
-    error_message = "Workspace note should describe the safety boundary without exposing the workspace password."
+    condition     = strcontains(output.workspace_note, "no Docker socket is mounted") && strcontains(output.workspace_note, "04:00 America/New_York") && strcontains(output.workspace_note, "Automatic interrupted-turn recovery is disabled") && !strcontains(output.workspace_note, "workspace-password-agent-stack-tests")
+    error_message = "Workspace note should describe the hard-cutover schedule and safety boundary without exposing the workspace password."
   }
 
   assert {

@@ -43,7 +43,9 @@ section() {
 }
 
 run_remote() {
-  "$SSH_WRAPPER" -- sh -lc "$1"
+  local quoted_command
+  printf -v quoted_command "%q" "$1"
+  "$SSH_WRAPPER" -- "sh -lc $quoted_command"
 }
 
 section "Runtime containers"
@@ -58,6 +60,18 @@ TS_CONTAINER="$(run_remote "sudo docker ps --format '{{.Names}}' | grep -E 'tail
 
 section "systemd"
 run_remote "sudo systemctl status --no-pager agent-stack || sudo systemctl status --no-pager openclaw || true"
+
+section "VPN health"
+run_remote "sudo agent-stack-diagnostics health vpn || true"
+
+section "VPN inspect"
+run_remote "sudo agent-stack-diagnostics inspect vpn || true"
+
+section "VPN logs"
+run_remote "sudo agent-stack-diagnostics logs vpn ${LOG_LINES} || true"
+
+section "Workspace Codex updater"
+run_remote "sudo agent-stack-diagnostics codex-update status || true"
 
 section "Layout"
 run_remote "if [ -d /opt/agent-stack ]; then echo agent_stack_root=present; else echo agent_stack_root=missing; fi; if [ -L /opt/openclaw ]; then echo legacy_root=symlink; elif [ -d /opt/openclaw ]; then echo legacy_root=directory; else echo legacy_root=missing; fi; if [ -f /opt/agent-stack/data/.agent-stack-layout-version ]; then echo layout_marker=present; else echo layout_marker=missing; fi"

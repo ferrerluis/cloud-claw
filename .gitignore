@@ -12,6 +12,9 @@ tfplan
 .terraform/
 .terraform.lock.hcl
 
+# Local diagnostic and configuration backups
+.tmp/
+
 # Variable files may contain secrets — use terraform.tfvars.example as the template
 *.tfvars
 *.tfvars.json

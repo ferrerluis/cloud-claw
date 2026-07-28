@@ -367,121 +367,136 @@ locals {
   runtime_do_volume_name = var.cloud_provider == "digitalocean" ? one(module.digitalocean[*].volume_name) : ""
 
   runtime_template_vars = {
-    provider_type                            = var.cloud_provider
-    project_name                             = var.project_name
-    admin_username                           = var.admin_username
-    admin_password                           = var.admin_password
-    admin_password_ssh_scope                 = var.admin_password_ssh_scope
-    host_codex_cli_enabled                   = var.host_codex_cli_enabled
-    ebs_volume_id                            = var.cloud_provider == "aws" ? local.runtime_data_volume_id : ""
-    do_volume_name                           = local.runtime_do_volume_name
-    hcloud_volume_id                         = var.cloud_provider == "hetzner" ? local.runtime_data_volume_id : ""
-    anthropic_api_key                        = var.anthropic_api_key
-    anthropic_auth_key                       = var.anthropic_auth_key
-    openai_api_key                           = var.openai_api_key
-    openai_auth_mode                         = var.openai_auth_mode
-    openai_codex_auth_json_base64            = var.openai_codex_auth_json_base64
-    groq_api_key                             = var.groq_api_key
-    gemini_api_key                           = var.gemini_api_key
-    telegram_bot_token                       = var.telegram_bot_token
-    telegram_allow_from_json                 = jsonencode(var.telegram_allow_from)
-    openclaw_config_mode                     = var.openclaw_config_mode
-    agent_channel                            = var.agent_channel
-    model_providers_enabled_json             = jsonencode(var.model_providers_enabled)
-    default_model                            = var.default_model
-    fallback_models_json                     = jsonencode(var.fallback_models)
-    tailscale_enabled                        = var.tailscale_enabled
-    tailscale_auth_key                       = var.tailscale_auth_key
-    openclaw_version                         = var.openclaw_version
-    openclaw_node_options                    = var.openclaw_node_options
-    openclaw_swap_size_mb                    = var.openclaw_swap_size_mb
-    openclaw_health_start_period_seconds     = var.openclaw_health_start_period_seconds
-    openclaw_health_retries                  = var.openclaw_health_retries
-    seed_starter_workspace_files             = var.seed_starter_workspace_files
-    starter_soul_profile                     = var.starter_soul_profile
-    gateway_token                            = local.resolved_gateway_token
-    enabled_services_json                    = jsonencode(var.enabled_services)
-    openclaw_enabled                         = local.openclaw_enabled
-    hermes_enabled                           = local.hermes_enabled
-    n8n_enabled                              = local.n8n_enabled
-    local_postgres_enabled                   = local.local_postgres_enabled
-    caddy_enabled                            = var.public_domain_enabled
-    hermes_image                             = var.hermes_image
-    hermes_dashboard_enabled                 = var.hermes_dashboard_enabled
-    hermes_api_server_enabled                = var.hermes_api_server_enabled
-    hermes_api_server_key                    = local.resolved_hermes_api_server_key
-    n8n_image                                = var.n8n_image
-    n8n_database_mode                        = var.n8n_database_mode
-    n8n_encryption_key                       = local.resolved_n8n_encryption_key
-    n8n_public_webhooks_enabled              = var.n8n_public_webhooks_enabled
-    n8n_generic_timezone                     = var.n8n_generic_timezone
-    postgres_image                           = var.postgres_image
-    postgres_database                        = var.postgres_database
-    postgres_user                            = var.postgres_user
-    postgres_password                        = local.resolved_postgres_password
-    n8n_postgres_host                        = local.resolved_n8n_postgres_host
-    n8n_postgres_port                        = local.resolved_n8n_postgres_port
-    n8n_postgres_database                    = local.resolved_n8n_postgres_database
-    n8n_postgres_user                        = local.resolved_n8n_postgres_user
-    n8n_postgres_password                    = local.resolved_n8n_postgres_password
-    n8n_postgres_ssl_enabled                 = local.resolved_n8n_postgres_ssl
-    public_domain_enabled                    = var.public_domain_enabled
-    openclaw_domain                          = local.resolved_openclaw_domain
-    hermes_domain                            = local.resolved_hermes_domain
-    n8n_domain                               = local.resolved_n8n_domain
-    acme_email                               = var.acme_email
-    ui_auth_mode                             = var.ui_auth_mode
-    ui_auth_username                         = var.ui_auth_username
-    ui_auth_password                         = local.resolved_ui_auth_password
-    workspace_enabled                        = local.workspace_enabled
-    workspace_username                       = var.workspace_username
-    workspace_password                       = var.workspace_password
-    workspace_ssh_host_port                  = var.workspace_ssh_host_port
-    workspace_ssh_public_keys_base64         = base64encode(join("\n", [for key in var.workspace_ssh_public_keys : trimspace(key)]))
-    workspace_drive_fuse_enabled             = var.workspace_drive_fuse_enabled
-    workspace_drive_remote                   = trimspace(var.workspace_drive_remote)
-    workspace_drive_remote_base64            = base64encode(trimspace(var.workspace_drive_remote))
-    workspace_drive_remote_name              = split(":", trimspace(var.workspace_drive_remote))[0]
-    workspace_drive_vfs_cache_max_size       = trimspace(var.workspace_drive_vfs_cache_max_size)
-    workspace_drive_vfs_cache_min_free_space = trimspace(var.workspace_drive_vfs_cache_min_free_space)
-    vpn_enabled                              = var.vpn_enabled
-    vpn_provider                             = var.vpn_provider
-    vpn_openvpn_config_url                   = var.vpn_openvpn_config_url
-    vpn_bypass_cidrs_json                    = jsonencode(var.vpn_bypass_cidrs)
-    vpn_disable_ipv6                         = var.vpn_disable_ipv6
-    vpn_healthcheck_url                      = var.vpn_healthcheck_url
-    tailscale_mode                           = var.tailscale_mode
-    tailscale_sidecar_enabled                = local.tailscale_sidecar_enabled
-    tailscale_host_enabled                   = local.tailscale_host_enabled
+    provider_type                                  = var.cloud_provider
+    project_name                                   = var.project_name
+    admin_username                                 = var.admin_username
+    admin_password                                 = var.admin_password
+    admin_password_ssh_scope                       = var.admin_password_ssh_scope
+    host_codex_cli_enabled                         = var.host_codex_cli_enabled
+    ebs_volume_id                                  = var.cloud_provider == "aws" ? local.runtime_data_volume_id : ""
+    do_volume_name                                 = local.runtime_do_volume_name
+    hcloud_volume_id                               = var.cloud_provider == "hetzner" ? local.runtime_data_volume_id : ""
+    anthropic_api_key                              = var.anthropic_api_key
+    anthropic_auth_key                             = var.anthropic_auth_key
+    openai_api_key                                 = var.openai_api_key
+    openai_auth_mode                               = var.openai_auth_mode
+    openai_codex_auth_json_base64                  = var.openai_codex_auth_json_base64
+    groq_api_key                                   = var.groq_api_key
+    gemini_api_key                                 = var.gemini_api_key
+    telegram_bot_token                             = var.telegram_bot_token
+    telegram_allow_from_json                       = jsonencode(var.telegram_allow_from)
+    openclaw_config_mode                           = var.openclaw_config_mode
+    agent_channel                                  = var.agent_channel
+    model_providers_enabled_json                   = jsonencode(var.model_providers_enabled)
+    default_model                                  = var.default_model
+    fallback_models_json                           = jsonencode(var.fallback_models)
+    tailscale_enabled                              = var.tailscale_enabled
+    tailscale_auth_key                             = var.tailscale_auth_key
+    openclaw_version                               = var.openclaw_version
+    openclaw_node_options                          = var.openclaw_node_options
+    openclaw_swap_size_mb                          = var.openclaw_swap_size_mb
+    openclaw_health_start_period_seconds           = var.openclaw_health_start_period_seconds
+    openclaw_health_retries                        = var.openclaw_health_retries
+    seed_starter_workspace_files                   = var.seed_starter_workspace_files
+    starter_soul_profile                           = var.starter_soul_profile
+    gateway_token                                  = local.resolved_gateway_token
+    enabled_services_json                          = jsonencode(var.enabled_services)
+    openclaw_enabled                               = local.openclaw_enabled
+    hermes_enabled                                 = local.hermes_enabled
+    n8n_enabled                                    = local.n8n_enabled
+    local_postgres_enabled                         = local.local_postgres_enabled
+    caddy_enabled                                  = var.public_domain_enabled
+    hermes_image                                   = var.hermes_image
+    hermes_dashboard_enabled                       = var.hermes_dashboard_enabled
+    hermes_api_server_enabled                      = var.hermes_api_server_enabled
+    hermes_api_server_key                          = local.resolved_hermes_api_server_key
+    n8n_image                                      = var.n8n_image
+    n8n_database_mode                              = var.n8n_database_mode
+    n8n_encryption_key                             = local.resolved_n8n_encryption_key
+    n8n_public_webhooks_enabled                    = var.n8n_public_webhooks_enabled
+    n8n_generic_timezone                           = var.n8n_generic_timezone
+    postgres_image                                 = var.postgres_image
+    postgres_database                              = var.postgres_database
+    postgres_user                                  = var.postgres_user
+    postgres_password                              = local.resolved_postgres_password
+    n8n_postgres_host                              = local.resolved_n8n_postgres_host
+    n8n_postgres_port                              = local.resolved_n8n_postgres_port
+    n8n_postgres_database                          = local.resolved_n8n_postgres_database
+    n8n_postgres_user                              = local.resolved_n8n_postgres_user
+    n8n_postgres_password                          = local.resolved_n8n_postgres_password
+    n8n_postgres_ssl_enabled                       = local.resolved_n8n_postgres_ssl
+    public_domain_enabled                          = var.public_domain_enabled
+    openclaw_domain                                = local.resolved_openclaw_domain
+    hermes_domain                                  = local.resolved_hermes_domain
+    n8n_domain                                     = local.resolved_n8n_domain
+    acme_email                                     = var.acme_email
+    ui_auth_mode                                   = var.ui_auth_mode
+    ui_auth_username                               = var.ui_auth_username
+    ui_auth_password                               = local.resolved_ui_auth_password
+    workspace_enabled                              = local.workspace_enabled
+    workspace_codex_release                        = var.workspace_codex_release
+    workspace_codex_auto_update_enabled            = var.workspace_codex_auto_update_enabled
+    workspace_codex_auto_update_timezone           = trimspace(var.workspace_codex_auto_update_timezone)
+    workspace_codex_auto_update_time               = trimspace(var.workspace_codex_auto_update_time)
+    workspace_codex_auto_recover_interrupted_turns = var.workspace_codex_auto_recover_interrupted_turns
+    workspace_username                             = var.workspace_username
+    workspace_password                             = var.workspace_password
+    workspace_ssh_host_port                        = var.workspace_ssh_host_port
+    workspace_ssh_host                             = trimspace(var.workspace_ssh_host_override) != "" ? trimspace(var.workspace_ssh_host_override) : var.project_name
+    workspace_ssh_public_keys_base64               = base64encode(join("\n", [for key in var.workspace_ssh_public_keys : trimspace(key)]))
+    workspace_fuse_enabled                         = var.workspace_fuse_enabled
+    workspace_drive_fuse_enabled                   = var.workspace_drive_fuse_enabled
+    workspace_drive_remote                         = trimspace(var.workspace_drive_remote)
+    workspace_drive_remote_base64                  = base64encode(trimspace(var.workspace_drive_remote))
+    workspace_drive_remote_name                    = split(":", trimspace(var.workspace_drive_remote))[0]
+    workspace_drive_vfs_cache_max_size             = trimspace(var.workspace_drive_vfs_cache_max_size)
+    workspace_drive_vfs_cache_min_free_space       = trimspace(var.workspace_drive_vfs_cache_min_free_space)
+    vpn_enabled                                    = var.vpn_enabled
+    vpn_provider                                   = var.vpn_provider
+    vpn_nordvpn_connect_target                     = var.vpn_nordvpn_connect_target
+    vpn_openvpn_config_url                         = var.vpn_openvpn_config_url
+    vpn_bypass_cidrs_json                          = jsonencode(var.vpn_bypass_cidrs)
+    vpn_disable_ipv6                               = var.vpn_disable_ipv6
+    vpn_healthcheck_url                            = var.vpn_healthcheck_url
+    tailscale_mode                                 = var.tailscale_mode
+    tailscale_sidecar_enabled                      = local.tailscale_sidecar_enabled
+    tailscale_host_enabled                         = local.tailscale_host_enabled
   }
 
-  runtime_docker_compose         = templatefile("${path.module}/modules/common/templates/runtime/docker-compose.yml.tpl", local.runtime_template_vars)
-  runtime_env                    = templatefile("${path.module}/modules/common/templates/runtime/env.tpl", local.runtime_template_vars)
-  runtime_workspace_env          = templatefile("${path.module}/modules/common/templates/runtime/workspace.env.tpl", local.runtime_template_vars)
-  runtime_caddyfile_template     = templatefile("${path.module}/modules/common/templates/runtime/Caddyfile.template.tpl", local.runtime_template_vars)
-  runtime_tailscale_bootstrap    = templatefile("${path.module}/modules/common/templates/runtime/tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
-  runtime_host_tailscale         = templatefile("${path.module}/modules/common/templates/runtime/host-tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
-  runtime_workspace_dockerfile   = templatefile("${path.module}/modules/common/templates/runtime/workspace.Dockerfile.tpl", local.runtime_template_vars)
-  runtime_workspace_entrypoint   = templatefile("${path.module}/modules/common/templates/runtime/workspace-entrypoint.sh.tpl", local.runtime_template_vars)
-  runtime_workspace_healthcheck  = templatefile("${path.module}/modules/common/templates/runtime/workspace-drive-healthcheck.sh.tpl", local.runtime_template_vars)
-  runtime_workspace_drive_helper = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-workspace-drive.sh.tpl", local.runtime_template_vars)
-  runtime_vpn_openvpn            = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-vpn-openvpn.sh.tpl", local.runtime_template_vars)
-  runtime_vpn_auth               = var.vpn_enabled ? "${var.vpn_username}\n${var.vpn_password}\n" : ""
-  runtime_diagnostics_helper     = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-diagnostics.sh.tpl", local.runtime_template_vars)
-  runtime_diagnostics_ssh_helper = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-diagnostics-ssh.sh.tpl", local.runtime_template_vars)
-  runtime_layout_migrator        = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-migrate-layout.sh.tpl", local.runtime_template_vars)
-  runtime_mount_volume           = templatefile("${path.module}/modules/common/templates/runtime/mount-agent-stack-volume.sh.tpl", local.runtime_template_vars)
-  runtime_installer              = templatefile("${path.module}/modules/common/templates/runtime/install-agent-stack.sh.tpl", local.runtime_template_vars)
-  runtime_agent_stack_service    = templatefile("${path.module}/modules/common/templates/runtime/agent-stack.service.tpl", local.runtime_template_vars)
-  runtime_openclaw_service       = templatefile("${path.module}/modules/common/templates/runtime/openclaw.service.tpl", local.runtime_template_vars)
-  runtime_watchdog               = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.sh.tpl", local.runtime_template_vars)
-  runtime_watchdog_service       = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.service.tpl", local.runtime_template_vars)
-  runtime_watchdog_timer         = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.timer.tpl", local.runtime_template_vars)
-  runtime_enabled_services       = jsonencode(var.enabled_services)
-  runtime_starter_soul           = file("${path.module}/modules/common/templates/starter/SOUL.${var.starter_soul_profile}.md")
-  runtime_starter_agents         = file("${path.module}/modules/common/templates/starter/AGENTS.default.md")
-  runtime_starter_tools          = file("${path.module}/modules/common/templates/starter/TOOLS.default.md")
-  runtime_starter_user           = file("${path.module}/modules/common/templates/starter/USER.default.md")
+  runtime_docker_compose          = templatefile("${path.module}/modules/common/templates/runtime/docker-compose.yml.tpl", local.runtime_template_vars)
+  runtime_env                     = templatefile("${path.module}/modules/common/templates/runtime/env.tpl", local.runtime_template_vars)
+  runtime_workspace_env           = templatefile("${path.module}/modules/common/templates/runtime/workspace.env.tpl", local.runtime_template_vars)
+  runtime_caddyfile_template      = templatefile("${path.module}/modules/common/templates/runtime/Caddyfile.template.tpl", local.runtime_template_vars)
+  runtime_tailscale_bootstrap     = templatefile("${path.module}/modules/common/templates/runtime/tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
+  runtime_host_tailscale          = templatefile("${path.module}/modules/common/templates/runtime/host-tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
+  runtime_workspace_dockerfile    = templatefile("${path.module}/modules/common/templates/runtime/workspace.Dockerfile.tpl", local.runtime_template_vars)
+  runtime_workspace_entrypoint    = templatefile("${path.module}/modules/common/templates/runtime/workspace-entrypoint.sh.tpl", local.runtime_template_vars)
+  runtime_workspace_healthcheck   = templatefile("${path.module}/modules/common/templates/runtime/workspace-drive-healthcheck.sh.tpl", local.runtime_template_vars)
+  runtime_workspace_drive_helper  = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-workspace-drive.sh.tpl", local.runtime_template_vars)
+  runtime_workspace_codex_update  = templatefile("${path.module}/modules/common/templates/runtime/workspace-codex-update.sh.tpl", local.runtime_template_vars)
+  runtime_workspace_codex_control = templatefile("${path.module}/modules/common/templates/runtime/workspace-codex-control.py.tpl", local.runtime_template_vars)
+  runtime_workspace_update_host   = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-workspace-codex-update.sh.tpl", local.runtime_template_vars)
+  runtime_workspace_update_unit   = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-workspace-codex-update.service.tpl", local.runtime_template_vars)
+  runtime_workspace_update_timer  = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-workspace-codex-update.timer.tpl", local.runtime_template_vars)
+  runtime_vpn_manager             = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-vpn.sh.tpl", local.runtime_template_vars)
+  runtime_vpn_openvpn             = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-vpn-openvpn.sh.tpl", local.runtime_template_vars)
+  runtime_vpn_auth                = var.vpn_enabled && var.vpn_provider == "nordvpn_openvpn" ? "${var.vpn_username}\n${var.vpn_password}\n" : ""
+  runtime_vpn_token               = var.vpn_enabled && var.vpn_provider == "nordvpn_nordlynx" ? "${var.vpn_nordvpn_token}\n" : ""
+  runtime_diagnostics_helper      = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-diagnostics.sh.tpl", local.runtime_template_vars)
+  runtime_diagnostics_ssh_helper  = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-diagnostics-ssh.sh.tpl", local.runtime_template_vars)
+  runtime_layout_migrator         = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-migrate-layout.sh.tpl", local.runtime_template_vars)
+  runtime_mount_volume            = templatefile("${path.module}/modules/common/templates/runtime/mount-agent-stack-volume.sh.tpl", local.runtime_template_vars)
+  runtime_installer               = templatefile("${path.module}/modules/common/templates/runtime/install-agent-stack.sh.tpl", local.runtime_template_vars)
+  runtime_agent_stack_service     = templatefile("${path.module}/modules/common/templates/runtime/agent-stack.service.tpl", local.runtime_template_vars)
+  runtime_openclaw_service        = templatefile("${path.module}/modules/common/templates/runtime/openclaw.service.tpl", local.runtime_template_vars)
+  runtime_watchdog                = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.sh.tpl", local.runtime_template_vars)
+  runtime_watchdog_service        = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.service.tpl", local.runtime_template_vars)
+  runtime_watchdog_timer          = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-tailscale-watchdog.timer.tpl", local.runtime_template_vars)
+  runtime_enabled_services        = jsonencode(var.enabled_services)
+  runtime_starter_soul            = file("${path.module}/modules/common/templates/starter/SOUL.${var.starter_soul_profile}.md")
+  runtime_starter_agents          = file("${path.module}/modules/common/templates/starter/AGENTS.default.md")
+  runtime_starter_tools           = file("${path.module}/modules/common/templates/starter/TOOLS.default.md")
+  runtime_starter_user            = file("${path.module}/modules/common/templates/starter/USER.default.md")
   runtime_artifact_checksum = nonsensitive(sha256(join("\n---agent-stack-artifact---\n", [
     nonsensitive(local.runtime_docker_compose),
     nonsensitive(local.runtime_env),
@@ -493,8 +508,15 @@ locals {
     nonsensitive(local.runtime_workspace_entrypoint),
     nonsensitive(local.runtime_workspace_healthcheck),
     nonsensitive(local.runtime_workspace_drive_helper),
+    nonsensitive(local.runtime_workspace_codex_update),
+    nonsensitive(local.runtime_workspace_codex_control),
+    nonsensitive(local.runtime_workspace_update_host),
+    nonsensitive(local.runtime_workspace_update_unit),
+    nonsensitive(local.runtime_workspace_update_timer),
+    nonsensitive(local.runtime_vpn_manager),
     nonsensitive(local.runtime_vpn_openvpn),
     nonsensitive(local.runtime_vpn_auth),
+    nonsensitive(local.runtime_vpn_token),
     nonsensitive(local.runtime_diagnostics_helper),
     nonsensitive(local.runtime_diagnostics_ssh_helper),
     nonsensitive(local.runtime_layout_migrator),
@@ -533,7 +555,7 @@ resource "terraform_data" "runtime_apply" {
 
   connection {
     type        = "ssh"
-    host        = local.instance_public_ip
+    host        = local.admin_ssh_host
     user        = var.admin_username
     private_key = file("${path.root}/${var.repo_ssh_private_key_path}")
     timeout     = "15m"
@@ -602,6 +624,41 @@ resource "terraform_data" "runtime_apply" {
   }
 
   provisioner "file" {
+    content     = var.workspace_drive_rclone_config_base64
+    destination = "${local.runtime_staging_dir}/workspace-rclone.conf.base64"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_workspace_codex_update
+    destination = "${local.runtime_staging_dir}/workspace-codex-update.sh"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_workspace_codex_control
+    destination = "${local.runtime_staging_dir}/workspace-codex-control.py"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_workspace_update_host
+    destination = "${local.runtime_staging_dir}/agent-stack-workspace-codex-update"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_workspace_update_unit
+    destination = "${local.runtime_staging_dir}/agent-stack-workspace-codex-update.service"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_workspace_update_timer
+    destination = "${local.runtime_staging_dir}/agent-stack-workspace-codex-update.timer"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_vpn_manager
+    destination = "${local.runtime_staging_dir}/agent-stack-vpn"
+  }
+
+  provisioner "file" {
     content     = local.runtime_vpn_openvpn
     destination = "${local.runtime_staging_dir}/agent-stack-vpn-openvpn"
   }
@@ -609,6 +666,11 @@ resource "terraform_data" "runtime_apply" {
   provisioner "file" {
     content     = local.runtime_vpn_auth
     destination = "${local.runtime_staging_dir}/vpn-auth.txt"
+  }
+
+  provisioner "file" {
+    content     = local.runtime_vpn_token
+    destination = "${local.runtime_staging_dir}/vpn-token.txt"
   }
 
   provisioner "file" {
@@ -672,11 +734,6 @@ resource "terraform_data" "runtime_apply" {
   }
 
   provisioner "file" {
-    content     = var.workspace_drive_rclone_config_base64
-    destination = "${local.runtime_staging_dir}/workspace-rclone.conf.base64"
-  }
-
-  provisioner "file" {
     content     = local.runtime_starter_soul
     destination = "${local.runtime_staging_dir}/templates/SOUL.${var.starter_soul_profile}.md"
   }
@@ -699,8 +756,10 @@ resource "terraform_data" "runtime_apply" {
   provisioner "remote-exec" {
     inline = [
       "chmod 0700 ${local.runtime_staging_dir}",
-      "chmod 0600 ${local.runtime_staging_dir}/.env ${local.runtime_staging_dir}/workspace.env ${local.runtime_staging_dir}/openai_codex_auth_json_base64 ${local.runtime_staging_dir}/workspace-rclone.conf.base64 ${local.runtime_staging_dir}/vpn-auth.txt",
-      "chmod 0755 ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir}/agent-stack-migrate-layout ${local.runtime_staging_dir}/mount-agent-stack-volume.sh ${local.runtime_staging_dir}/tailscale-bootstrap.sh ${local.runtime_staging_dir}/host-tailscale-bootstrap.sh ${local.runtime_staging_dir}/workspace-entrypoint.sh ${local.runtime_staging_dir}/workspace-drive-healthcheck ${local.runtime_staging_dir}/agent-stack-workspace-drive ${local.runtime_staging_dir}/agent-stack-vpn-openvpn ${local.runtime_staging_dir}/agent-stack-diagnostics ${local.runtime_staging_dir}/agent-stack-diagnostics-ssh ${local.runtime_staging_dir}/agent-stack-tailscale-watchdog",
+      "chmod 0600 ${local.runtime_staging_dir}/.env ${local.runtime_staging_dir}/workspace.env ${local.runtime_staging_dir}/openai_codex_auth_json_base64 ${local.runtime_staging_dir}/workspace-rclone.conf.base64 ${local.runtime_staging_dir}/vpn-auth.txt ${local.runtime_staging_dir}/vpn-token.txt",
+      "chmod 0755 ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir}/agent-stack-migrate-layout ${local.runtime_staging_dir}/mount-agent-stack-volume.sh ${local.runtime_staging_dir}/tailscale-bootstrap.sh ${local.runtime_staging_dir}/host-tailscale-bootstrap.sh ${local.runtime_staging_dir}/workspace-entrypoint.sh ${local.runtime_staging_dir}/workspace-drive-healthcheck ${local.runtime_staging_dir}/agent-stack-workspace-drive ${local.runtime_staging_dir}/agent-stack-vpn ${local.runtime_staging_dir}/agent-stack-vpn-openvpn ${local.runtime_staging_dir}/agent-stack-diagnostics ${local.runtime_staging_dir}/agent-stack-diagnostics-ssh ${local.runtime_staging_dir}/agent-stack-tailscale-watchdog ${local.runtime_staging_dir}/agent-stack-workspace-codex-update",
+      "chmod 0755 ${local.runtime_staging_dir}/workspace-codex-update.sh",
+      "chmod 0755 ${local.runtime_staging_dir}/workspace-codex-control.py",
       "sudo bash ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir} ${local.runtime_artifact_checksum}",
     ]
   }
@@ -713,7 +772,7 @@ resource "local_file" "repo_ssh_config" {
   file_permission = "0600"
   content         = <<-EOT
 Host ${var.repo_ssh_host_alias}
-  HostName ${local.instance_public_ip}
+  HostName ${local.admin_ssh_host}
   User ${var.admin_username}
   IdentityFile ${var.repo_ssh_identity_file}
   IdentitiesOnly yes

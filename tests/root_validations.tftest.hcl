@@ -30,29 +30,45 @@ override_module {
 }
 
 variables {
-  project_name                  = "agent-stack"
-  admin_password                = ""
-  admin_password_ssh_scope      = "disabled"
-  ssh_public_key                = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
-  repo_ssh_private_key_path     = "tests/fixtures/fake_ssh_private_key.txt"
-  generate_repo_ssh_config      = false
-  aws_access_key                = "AKIAAGENTSTACKTESTS"
-  aws_secret_key                = "agent-stack-tests"
-  do_token                      = "do-agent-stack-tests"
-  hcloud_token                  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  model_providers_enabled       = ["google"]
-  default_model                 = "google/gemini-3-flash-preview"
-  fallback_models               = []
-  gemini_api_key                = "gemini-agent-stack-tests"
-  gateway_token                 = "gateway-token-agent-stack-tests"
-  hermes_api_server_key         = "hermes-key-agent-stack-tests"
-  n8n_encryption_key            = "n8n-key-agent-stack-tests"
-  postgres_password             = "postgres-password-agent-stack-tests"
-  ui_auth_password              = "ui-password-agent-stack-tests"
-  enabled_services              = ["openclaw", "hermes", "n8n"]
-  tailscale_enabled             = false
-  tailscale_auth_key            = ""
-  openai_codex_auth_json_base64 = ""
+  project_name                                   = "agent-stack"
+  admin_ssh_host_override                        = ""
+  workspace_ssh_host_override                    = ""
+  admin_password                                 = ""
+  admin_password_ssh_scope                       = "disabled"
+  ssh_public_key                                 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAgentStackTerraformPlanTestsOnly agent-stack-tests"
+  repo_ssh_private_key_path                      = "tests/fixtures/fake_ssh_private_key.txt"
+  generate_repo_ssh_config                       = false
+  aws_access_key                                 = "AKIAAGENTSTACKTESTS"
+  aws_secret_key                                 = "agent-stack-tests"
+  do_token                                       = "do-agent-stack-tests"
+  hcloud_token                                   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  model_providers_enabled                        = ["google"]
+  default_model                                  = "google/gemini-3-flash-preview"
+  fallback_models                                = []
+  gemini_api_key                                 = "gemini-agent-stack-tests"
+  gateway_token                                  = "gateway-token-agent-stack-tests"
+  hermes_api_server_key                          = "hermes-key-agent-stack-tests"
+  n8n_encryption_key                             = "n8n-key-agent-stack-tests"
+  postgres_password                              = "postgres-password-agent-stack-tests"
+  ui_auth_password                               = "ui-password-agent-stack-tests"
+  enabled_services                               = ["openclaw", "hermes", "n8n"]
+  workspace_codex_release                        = "0.145.0"
+  workspace_codex_auto_update_enabled            = false
+  workspace_codex_auto_update_timezone           = "America/New_York"
+  workspace_codex_auto_update_time               = "04:00"
+  workspace_codex_auto_recover_interrupted_turns = false
+  workspace_fuse_enabled                         = false
+  vpn_enabled                                    = false
+  vpn_provider                                   = "nordvpn_openvpn"
+  vpn_nordvpn_token                              = ""
+  vpn_nordvpn_connect_target                     = ""
+  vpn_openvpn_config_url                         = ""
+  vpn_username                                   = ""
+  vpn_password                                   = ""
+  vpn_bypass_cidrs                               = []
+  tailscale_enabled                              = false
+  tailscale_auth_key                             = ""
+  openai_codex_auth_json_base64                  = ""
 }
 
 run "rejects_unknown_cloud_provider" {
@@ -134,6 +150,68 @@ run "rejects_vpn_without_bypass_cidrs" {
 
   expect_failures = [
     var.vpn_bypass_cidrs,
+  ]
+}
+
+run "accepts_nordlynx_with_token_and_public_bypass" {
+  command = plan
+
+  variables {
+    vpn_enabled                = true
+    vpn_provider               = "nordvpn_nordlynx"
+    vpn_nordvpn_token          = "nord-access-token-agent-stack-tests"
+    vpn_nordvpn_connect_target = "United_States"
+    vpn_bypass_cidrs           = ["203.0.113.5/32"]
+  }
+}
+
+run "rejects_nordlynx_without_token" {
+  command = plan
+
+  variables {
+    vpn_enabled      = true
+    vpn_provider     = "nordvpn_nordlynx"
+    vpn_bypass_cidrs = ["203.0.113.5/32"]
+  }
+
+  expect_failures = [
+    var.vpn_nordvpn_token,
+  ]
+}
+
+run "rejects_tailscale_vpn_bypass" {
+  command = plan
+
+  variables {
+    vpn_bypass_cidrs = ["100.64.0.0/10"]
+  }
+
+  expect_failures = [
+    var.vpn_bypass_cidrs,
+  ]
+}
+
+run "rejects_vpn_bypass_supernet_overlapping_tailscale" {
+  command = plan
+
+  variables {
+    vpn_bypass_cidrs = ["100.0.0.0/8"]
+  }
+
+  expect_failures = [
+    var.vpn_bypass_cidrs,
+  ]
+}
+
+run "rejects_invalid_nordlynx_target" {
+  command = plan
+
+  variables {
+    vpn_nordvpn_connect_target = "United States"
+  }
+
+  expect_failures = [
+    var.vpn_nordvpn_connect_target,
   ]
 }
 
@@ -327,6 +405,130 @@ run "rejects_drive_fuse_without_valid_base64_config" {
 
   expect_failures = [
     var.workspace_drive_rclone_config_base64,
+  ]
+}
+
+run "rejects_workspace_fuse_without_workspace_service" {
+  command = plan
+
+  variables {
+    workspace_fuse_enabled = true
+  }
+
+  expect_failures = [
+    var.workspace_fuse_enabled,
+  ]
+}
+
+run "rejects_workspace_codex_auto_update_without_workspace_service" {
+  command = plan
+
+  variables {
+    workspace_codex_auto_update_enabled = true
+  }
+
+  expect_failures = [
+    var.workspace_codex_auto_update_enabled,
+  ]
+}
+
+run "accepts_workspace_codex_auto_update_with_workspace_service" {
+  command = plan
+
+  variables {
+    enabled_services                    = ["openclaw", "workspace"]
+    workspace_password                  = "workspace-password-agent-stack-tests"
+    workspace_codex_auto_update_enabled = true
+  }
+}
+
+run "rejects_workspace_codex_auto_update_with_prerelease_fallback" {
+  command = plan
+
+  variables {
+    enabled_services                    = ["openclaw", "workspace"]
+    workspace_password                  = "workspace-password-agent-stack-tests"
+    workspace_codex_auto_update_enabled = true
+    workspace_codex_release             = "0.145.0-beta.1"
+  }
+
+  expect_failures = [
+    var.workspace_codex_auto_update_enabled,
+  ]
+}
+
+run "rejects_invalid_workspace_codex_auto_update_timezone" {
+  command = plan
+
+  variables {
+    workspace_codex_auto_update_timezone = "America New_York"
+  }
+
+  expect_failures = [
+    var.workspace_codex_auto_update_timezone,
+  ]
+}
+
+run "rejects_invalid_workspace_codex_auto_update_time" {
+  command = plan
+
+  variables {
+    workspace_codex_auto_update_time = "4:00"
+  }
+
+  expect_failures = [
+    var.workspace_codex_auto_update_time,
+  ]
+}
+
+run "rejects_workspace_codex_auto_recovery_without_auto_update" {
+  command = plan
+
+  variables {
+    workspace_codex_auto_recover_interrupted_turns = true
+  }
+
+  expect_failures = [
+    var.workspace_codex_auto_recover_interrupted_turns,
+  ]
+}
+
+run "rejects_workspace_codex_auto_update_and_recovery_without_workspace_service" {
+  command = plan
+
+  variables {
+    enabled_services                               = ["openclaw"]
+    workspace_codex_auto_update_enabled            = true
+    workspace_codex_auto_recover_interrupted_turns = true
+  }
+
+  expect_failures = [
+    var.workspace_codex_auto_update_enabled,
+  ]
+}
+
+run "accepts_workspace_codex_auto_recovery_with_workspace_service" {
+  command = plan
+
+  variables {
+    enabled_services                               = ["openclaw", "workspace"]
+    workspace_password                             = "workspace-password-agent-stack-tests"
+    workspace_codex_auto_update_enabled            = true
+    workspace_codex_auto_update_timezone           = "Europe/London"
+    workspace_codex_auto_update_time               = "03:30"
+    workspace_codex_auto_recover_interrupted_turns = true
+  }
+}
+
+run "rejects_floating_workspace_codex_release" {
+  command = plan
+
+  variables {
+    workspace_codex_release = "latest"
+  }
+
+  expect_failures = [
+    var.workspace_codex_release,
   ]
 }
 

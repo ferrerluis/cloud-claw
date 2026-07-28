@@ -33,6 +33,17 @@ variable "admin_username" {
   }
 }
 
+variable "admin_ssh_host_override" {
+  description = "Optional SSH host or IP for Terraform runtime provisioning and admin helper outputs. Blank uses the cloud provider public IP. Set to a Tailscale DNS name when public SSH is intentionally unavailable."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.admin_ssh_host_override) == "" || !can(regex("\\s", trimspace(var.admin_ssh_host_override)))
+    error_message = "admin_ssh_host_override must be blank or a single host/IP value without spaces."
+  }
+}
+
 variable "admin_password" {
   description = "Optional password for the SSH/admin user. Blank keeps the managed admin password locked and key-only. If set, also set admin_password_ssh_scope."
   type        = string
@@ -463,6 +474,69 @@ variable "enabled_services" {
   }
 }
 
+variable "workspace_codex_release" {
+  description = "Pinned Codex CLI release baked into the optional workspace image. Use an explicit stable, alpha, or beta release version."
+  type        = string
+  default     = "0.145.0"
+
+  validation {
+    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+(-(alpha|beta)(\\.[0-9]+)?)?$", trimspace(var.workspace_codex_release)))
+    error_message = "workspace_codex_release must be an explicit Codex version such as 0.145.0, 0.145.0-alpha.18, or 0.145.0-beta.1."
+  }
+}
+
+variable "workspace_codex_auto_update_enabled" {
+  description = "Opt in to a root-managed workspace Codex updater. It checks the latest stable release daily at workspace_codex_auto_update_time in workspace_codex_auto_update_timezone without rebuilding the stack. It requires a stable pinned image fallback. A new release may interrupt active Codex work when the app server restarts."
+  type        = bool
+  default     = false
+
+  validation {
+    condition = !var.workspace_codex_auto_update_enabled || (
+      contains(var.enabled_services, "workspace") &&
+      can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", trimspace(var.workspace_codex_release)))
+    )
+    error_message = "workspace_codex_auto_update_enabled requires enabled_services to include \"workspace\" and workspace_codex_release to be a stable x.y.z fallback."
+  }
+}
+
+variable "workspace_codex_auto_update_timezone" {
+  description = "IANA timezone used for the daily workspace Codex auto-update timer, such as America/New_York."
+  type        = string
+  default     = "America/New_York"
+
+  validation {
+    condition     = trimspace(var.workspace_codex_auto_update_timezone) == var.workspace_codex_auto_update_timezone && can(regex("^(UTC|[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z][A-Za-z0-9_+-]*)+)$", var.workspace_codex_auto_update_timezone))
+    error_message = "workspace_codex_auto_update_timezone must be UTC or an IANA timezone such as America/New_York."
+  }
+}
+
+variable "workspace_codex_auto_update_time" {
+  description = "Local daily time for the workspace Codex auto-update timer in 24-hour HH:MM format."
+  type        = string
+  default     = "04:00"
+
+  validation {
+    condition     = trimspace(var.workspace_codex_auto_update_time) == var.workspace_codex_auto_update_time && can(regex("^([01][0-9]|2[0-3]):[0-5][0-9]$", var.workspace_codex_auto_update_time))
+    error_message = "workspace_codex_auto_update_time must use 24-hour HH:MM format, such as 04:00."
+  }
+}
+
+variable "workspace_codex_auto_recover_interrupted_turns" {
+  description = "After a verified visual end-to-end probe, opt in to one safety-constrained recovery turn for each proven Codex turn interrupted by the scheduled updater."
+  type        = bool
+  default     = false
+
+  validation {
+    condition = (
+      !var.workspace_codex_auto_recover_interrupted_turns || (
+        var.workspace_codex_auto_update_enabled &&
+        contains(var.enabled_services, "workspace")
+      )
+    )
+    error_message = "workspace_codex_auto_recover_interrupted_turns requires workspace_codex_auto_update_enabled = true and enabled_services to include \"workspace\"."
+  }
+}
+
 variable "workspace_username" {
   description = "Username created inside the optional workspace container."
   type        = string
@@ -500,6 +574,17 @@ variable "workspace_ssh_host_port" {
   validation {
     condition     = var.workspace_ssh_host_port >= 1024 && var.workspace_ssh_host_port <= 65535
     error_message = "workspace_ssh_host_port must be between 1024 and 65535."
+  }
+}
+
+variable "workspace_ssh_host_override" {
+  description = "Optional SSH host or IP to show for workspace connection outputs. Blank uses project_name, which is usually the Tailscale device name."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.workspace_ssh_host_override) == "" || !can(regex("\\s", trimspace(var.workspace_ssh_host_override)))
+    error_message = "workspace_ssh_host_override must be blank or a single host/IP value without spaces."
   }
 }
 
@@ -575,6 +660,17 @@ variable "workspace_drive_vfs_cache_min_free_space" {
   }
 }
 
+variable "workspace_fuse_enabled" {
+  description = "Expose /dev/fuse to the optional workspace container for user-space mounts such as rclone mount. This grants the container SYS_ADMIN and disables AppArmor confinement, so keep it disabled unless you need FUSE."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.workspace_fuse_enabled || contains(var.enabled_services, "workspace")
+    error_message = "workspace_fuse_enabled requires enabled_services to include \"workspace\"."
+  }
+}
+
 # ─────────────────────────────────────────────────────────
 # Host VPN
 # ─────────────────────────────────────────────────────────
@@ -586,13 +682,43 @@ variable "vpn_enabled" {
 }
 
 variable "vpn_provider" {
-  description = "VPN integration to configure. v1 supports NordVPN manual OpenVPN service credentials."
+  description = "VPN integration to configure. Supports NordVPN manual OpenVPN and the native Linux app with NordLynx."
   type        = string
   default     = "nordvpn_openvpn"
 
   validation {
-    condition     = contains(["nordvpn_openvpn"], var.vpn_provider)
-    error_message = "vpn_provider must be \"nordvpn_openvpn\"."
+    condition     = contains(["nordvpn_openvpn", "nordvpn_nordlynx"], var.vpn_provider)
+    error_message = "vpn_provider must be \"nordvpn_openvpn\" or \"nordvpn_nordlynx\"."
+  }
+}
+
+variable "vpn_nordvpn_token" {
+  description = "Nord Account access token used by the headless NordVPN Linux app. Required only for vpn_provider = \"nordvpn_nordlynx\"."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition = (
+      !var.vpn_enabled ||
+      var.vpn_provider != "nordvpn_nordlynx" ||
+      trimspace(var.vpn_nordvpn_token) != ""
+    )
+    error_message = "vpn_nordvpn_token is required when vpn_enabled is true and vpn_provider is \"nordvpn_nordlynx\"."
+  }
+}
+
+variable "vpn_nordvpn_connect_target" {
+  description = "Optional NordVPN Linux app connection target such as United_States or us1234. Blank lets NordVPN choose the globally recommended server."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      trimspace(var.vpn_nordvpn_connect_target) == "" ||
+      can(regex("^[A-Za-z0-9_-]+$", trimspace(var.vpn_nordvpn_connect_target)))
+    )
+    error_message = "vpn_nordvpn_connect_target must be blank or contain only letters, numbers, underscores, and hyphens."
   }
 }
 
@@ -604,9 +730,10 @@ variable "vpn_openvpn_config_url" {
   validation {
     condition = (
       !var.vpn_enabled ||
+      var.vpn_provider != "nordvpn_openvpn" ||
       can(regex("^https://", trimspace(var.vpn_openvpn_config_url)))
     )
-    error_message = "vpn_openvpn_config_url must be an https:// URL when vpn_enabled is true."
+    error_message = "vpn_openvpn_config_url must be an https:// URL when the enabled VPN provider is \"nordvpn_openvpn\"."
   }
 }
 
@@ -617,8 +744,12 @@ variable "vpn_username" {
   sensitive   = true
 
   validation {
-    condition     = !var.vpn_enabled || trimspace(var.vpn_username) != ""
-    error_message = "vpn_username is required when vpn_enabled is true."
+    condition = (
+      !var.vpn_enabled ||
+      var.vpn_provider != "nordvpn_openvpn" ||
+      trimspace(var.vpn_username) != ""
+    )
+    error_message = "vpn_username is required when the enabled VPN provider is \"nordvpn_openvpn\"."
   }
 }
 
@@ -629,13 +760,17 @@ variable "vpn_password" {
   sensitive   = true
 
   validation {
-    condition     = !var.vpn_enabled || trimspace(var.vpn_password) != ""
-    error_message = "vpn_password is required when vpn_enabled is true."
+    condition = (
+      !var.vpn_enabled ||
+      var.vpn_provider != "nordvpn_openvpn" ||
+      trimspace(var.vpn_password) != ""
+    )
+    error_message = "vpn_password is required when the enabled VPN provider is \"nordvpn_openvpn\"."
   }
 }
 
 variable "vpn_bypass_cidrs" {
-  description = "IPv4 CIDRs that must keep using the original host gateway after the VPN connects, such as your admin SSH /32 or 100.64.0.0/10 for host Tailscale access."
+  description = "IPv4 CIDRs that must keep using the original host gateway after the VPN connects, such as your current public admin SSH /32. Do not add Tailscale 100.64.0.0/10 here; Tailscale routes are preserved separately."
   type        = list(string)
   default     = []
 
@@ -649,13 +784,27 @@ variable "vpn_bypass_cidrs" {
   }
 
   validation {
+    condition = alltrue([
+      for cidr in var.vpn_bypass_cidrs :
+      can(cidrhost(cidr, 0)) ? !(
+        can(regex("^100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.", cidrhost(cidr, 0))) ||
+        can(regex(
+          "^(0\\.0\\.0\\.0/[01]|64\\.0\\.0\\.0/2|96\\.0\\.0\\.0/[3-5]|100\\.0\\.0\\.0/[6-9])$",
+          "${cidrhost(cidr, 0)}/${split("/", cidr)[1]}"
+        ))
+      ) : true
+    ])
+    error_message = "vpn_bypass_cidrs must not contain or overlap Tailscale 100.64.0.0/10; AgentStack preserves Tailscale separately."
+  }
+
+  validation {
     condition     = !var.vpn_enabled || length(var.vpn_bypass_cidrs) > 0
-    error_message = "vpn_bypass_cidrs must include at least one access CIDR when vpn_enabled is true so SSH/Tailscale access is not routed into the VPN tunnel."
+    error_message = "vpn_bypass_cidrs must include at least one non-Tailscale access CIDR when vpn_enabled is true so public fallback SSH is not routed into the VPN tunnel."
   }
 }
 
 variable "vpn_disable_ipv6" {
-  description = "Disable host IPv6 while the host VPN is enabled to avoid IPv6 egress bypassing an IPv4-only OpenVPN tunnel."
+  description = "Disable host IPv6 while the host VPN is enabled to avoid IPv6 egress bypassing the managed VPN tunnel."
   type        = bool
   default     = true
 }

@@ -84,12 +84,18 @@ run_phase "runtime shell syntax" bash -n \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-tailscale-watchdog.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/tailscale-bootstrap.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/host-tailscale-bootstrap.sh.tpl" \
+  "$TEST_REPO/modules/common/templates/runtime/agent-stack-vpn.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-vpn-openvpn.sh.tpl" \
+  "$TEST_REPO/modules/common/templates/runtime/workspace-codex-update.sh.tpl" \
+  "$TEST_REPO/modules/common/templates/runtime/agent-stack-workspace-codex-update.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/workspace-entrypoint.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/workspace-drive-healthcheck.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-workspace-drive.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-diagnostics.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-diagnostics-ssh.sh.tpl" || true
+run_phase "workspace Codex control Python syntax" python3 -c \
+  'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))' \
+  "$TEST_REPO/modules/common/templates/runtime/workspace-codex-control.py.tpl" || true
 
 git -C "$ROOT_DIR" status --short --untracked-files=all > "$STATUS_AFTER"
 if diff -u "$STATUS_BEFORE" "$STATUS_AFTER"; then

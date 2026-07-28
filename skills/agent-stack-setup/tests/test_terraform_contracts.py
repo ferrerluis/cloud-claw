@@ -84,6 +84,7 @@ class TerraformContractTest(unittest.TestCase):
 
     def test_agent_stack_defaults_stay_authoritative_in_variables_tf(self) -> None:
         self.assertEqual(variable_default(self.variables_tf, "project_name"), '"agent-stack"')
+        self.assertEqual(variable_default(self.variables_tf, "admin_ssh_host_override"), '""')
         self.assertEqual(variable_default(self.variables_tf, "admin_password"), '""')
         self.assertEqual(variable_default(self.variables_tf, "admin_password_ssh_scope"), '"disabled"')
         self.assertEqual(variable_default(self.variables_tf, "host_codex_cli_enabled"), "true")
@@ -95,14 +96,23 @@ class TerraformContractTest(unittest.TestCase):
         self.assertEqual(variable_default(self.variables_tf, "openclaw_health_retries"), "8")
         self.assertEqual(variable_default(self.variables_tf, "openai_auth_mode"), '"api_key"')
         self.assertEqual(variable_default(self.variables_tf, "postgres_image"), '"postgres:17-alpine"')
+        self.assertEqual(variable_default(self.variables_tf, "workspace_codex_release"), '"0.145.0"')
+        self.assertEqual(variable_default(self.variables_tf, "workspace_codex_auto_update_enabled"), "false")
+        self.assertEqual(variable_default(self.variables_tf, "workspace_codex_auto_update_timezone"), '"America/New_York"')
+        self.assertEqual(variable_default(self.variables_tf, "workspace_codex_auto_update_time"), '"04:00"')
+        self.assertEqual(variable_default(self.variables_tf, "workspace_codex_auto_recover_interrupted_turns"), "false")
         self.assertEqual(variable_default(self.variables_tf, "workspace_username"), '"user"')
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_host_port"), "2222")
+        self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_host_override"), '""')
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_public_keys"), "[]")
         self.assertEqual(variable_default(self.variables_tf, "workspace_drive_fuse_enabled"), "false")
         self.assertEqual(variable_default(self.variables_tf, "workspace_drive_remote"), '"workspace-drive:"')
         self.assertEqual(variable_default(self.variables_tf, "workspace_drive_vfs_cache_max_size"), '"10G"')
+        self.assertEqual(variable_default(self.variables_tf, "workspace_fuse_enabled"), "false")
         self.assertEqual(variable_default(self.variables_tf, "vpn_enabled"), "false")
         self.assertEqual(variable_default(self.variables_tf, "vpn_provider"), '"nordvpn_openvpn"')
+        self.assertEqual(variable_default(self.variables_tf, "vpn_nordvpn_token"), '""')
+        self.assertEqual(variable_default(self.variables_tf, "vpn_nordvpn_connect_target"), '""')
         self.assertEqual(variable_default(self.variables_tf, "vpn_bypass_cidrs"), "[]")
         self.assertEqual(variable_default(self.variables_tf, "vpn_disable_ipv6"), "true")
         self.assertEqual(variable_default(self.variables_tf, "tailscale_mode"), '"sidecar"')
@@ -121,11 +131,60 @@ class TerraformContractTest(unittest.TestCase):
         enabled_services = extract_named_block(self.variables_tf, "variable", "enabled_services")
         workspace_password = extract_named_block(self.variables_tf, "variable", "workspace_password")
         workspace_ssh_public_keys = extract_named_block(self.variables_tf, "variable", "workspace_ssh_public_keys")
+        workspace_fuse_enabled = extract_named_block(self.variables_tf, "variable", "workspace_fuse_enabled")
+        workspace_codex_release = extract_named_block(self.variables_tf, "variable", "workspace_codex_release")
+        workspace_codex_auto_update_enabled = extract_named_block(
+            self.variables_tf, "variable", "workspace_codex_auto_update_enabled"
+        )
+        workspace_codex_auto_update_timezone = extract_named_block(
+            self.variables_tf, "variable", "workspace_codex_auto_update_timezone"
+        )
+        workspace_codex_auto_update_time = extract_named_block(
+            self.variables_tf, "variable", "workspace_codex_auto_update_time"
+        )
+        workspace_codex_auto_recover_interrupted_turns = extract_named_block(
+            self.variables_tf, "variable", "workspace_codex_auto_recover_interrupted_turns"
+        )
         self.assertIn('"workspace"', enabled_services)
+        self.assertIn('default     = "0.145.0"', workspace_codex_release)
+        self.assertIn("must be an explicit Codex version", workspace_codex_release)
+        self.assertRegex(
+            self.main_tf,
+            r"workspace_codex_release\s+=\s+var\.workspace_codex_release",
+        )
+        self.assertIn("default     = false", workspace_codex_auto_update_enabled)
+        self.assertIn('enabled_services to include \\"workspace\\"', workspace_codex_auto_update_enabled)
+        self.assertIn("stable x.y.z fallback", workspace_codex_auto_update_enabled)
+        self.assertIn('^[0-9]+\\\\.[0-9]+\\\\.[0-9]+$', workspace_codex_auto_update_enabled)
+        self.assertRegex(
+            self.main_tf,
+            r"workspace_codex_auto_update_enabled\s+=\s+var\.workspace_codex_auto_update_enabled",
+        )
+        self.assertIn('default     = "America/New_York"', workspace_codex_auto_update_timezone)
+        self.assertIn("IANA timezone", workspace_codex_auto_update_timezone)
+        self.assertRegex(
+            self.main_tf,
+            r"workspace_codex_auto_update_timezone\s+=\s+trimspace\(var\.workspace_codex_auto_update_timezone\)",
+        )
+        self.assertIn('default     = "04:00"', workspace_codex_auto_update_time)
+        self.assertIn("24-hour HH:MM", workspace_codex_auto_update_time)
+        self.assertRegex(
+            self.main_tf,
+            r"workspace_codex_auto_update_time\s+=\s+trimspace\(var\.workspace_codex_auto_update_time\)",
+        )
+        self.assertIn("default     = false", workspace_codex_auto_recover_interrupted_turns)
+        self.assertIn("requires workspace_codex_auto_update_enabled", workspace_codex_auto_recover_interrupted_turns)
+        self.assertRegex(
+            self.main_tf,
+            r"workspace_codex_auto_recover_interrupted_turns\s+=\s+var\.workspace_codex_auto_recover_interrupted_turns",
+        )
         self.assertIn("workspace_password must be set when enabled_services includes workspace.", workspace_password)
         self.assertIn("sensitive   = true", workspace_password)
         self.assertIn("must be OpenSSH public key strings", workspace_ssh_public_keys)
         self.assertNotIn("sensitive   = true", workspace_ssh_public_keys)
+        self.assertIn("default     = false", workspace_fuse_enabled)
+        self.assertIn("SYS_ADMIN", workspace_fuse_enabled)
+        self.assertIn('enabled_services to include \\"workspace\\"', workspace_fuse_enabled)
 
         drive_enabled = extract_named_block(self.variables_tf, "variable", "workspace_drive_fuse_enabled")
         drive_config = extract_named_block(self.variables_tf, "variable", "workspace_drive_rclone_config_base64")
@@ -136,15 +195,24 @@ class TerraformContractTest(unittest.TestCase):
     def test_host_vpn_contract_is_disabled_by_default_and_sensitive(self) -> None:
         vpn_enabled = extract_named_block(self.variables_tf, "variable", "vpn_enabled")
         vpn_provider = extract_named_block(self.variables_tf, "variable", "vpn_provider")
+        vpn_nordvpn_token = extract_named_block(self.variables_tf, "variable", "vpn_nordvpn_token")
+        vpn_nordvpn_connect_target = extract_named_block(
+            self.variables_tf, "variable", "vpn_nordvpn_connect_target"
+        )
         vpn_username = extract_named_block(self.variables_tf, "variable", "vpn_username")
         vpn_password = extract_named_block(self.variables_tf, "variable", "vpn_password")
         vpn_bypass_cidrs = extract_named_block(self.variables_tf, "variable", "vpn_bypass_cidrs")
         self.assertIn("default     = false", vpn_enabled)
         self.assertIn("nordvpn_openvpn", vpn_provider)
+        self.assertIn("nordvpn_nordlynx", vpn_provider)
+        self.assertIn("sensitive   = true", vpn_nordvpn_token)
+        self.assertIn("required when vpn_enabled is true", vpn_nordvpn_token)
+        self.assertIn("United_States", vpn_nordvpn_connect_target)
         self.assertIn("sensitive   = true", vpn_username)
         self.assertIn("sensitive   = true", vpn_password)
-        self.assertIn("at least one access CIDR", vpn_bypass_cidrs)
+        self.assertIn("at least one non-Tailscale access CIDR", vpn_bypass_cidrs)
         self.assertIn("IPv4 CIDRs", vpn_bypass_cidrs)
+        self.assertIn("100.64.0.0/10", vpn_bypass_cidrs)
 
 
 if __name__ == "__main__":

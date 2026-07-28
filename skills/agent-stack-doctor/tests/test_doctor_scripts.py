@@ -16,9 +16,22 @@ class DoctorScriptsTest(unittest.TestCase):
         script = CHECK_REMOTE.read_text(encoding="utf-8")
         self.assertIn("systemctl status --no-pager agent-stack", script)
         self.assertIn("systemctl status --no-pager openclaw", script)
+        self.assertIn('section "VPN health"', script)
+        self.assertIn("agent-stack-diagnostics health vpn", script)
+        self.assertIn('section "VPN inspect"', script)
+        self.assertIn("agent-stack-diagnostics inspect vpn", script)
+        self.assertIn('section "VPN logs"', script)
+        self.assertIn("agent-stack-diagnostics logs vpn", script)
+        self.assertIn('section "Workspace Codex updater"', script)
+        self.assertIn("agent-stack-diagnostics codex-update status", script)
         self.assertIn("agent_stack_root=present", script)
         self.assertIn("legacy_root=symlink", script)
         self.assertIn("layout_marker=present", script)
+
+    def test_remote_health_preserves_remote_shell_quoting(self) -> None:
+        script = CHECK_REMOTE.read_text(encoding="utf-8")
+        self.assertIn('printf -v quoted_command "%q" "$1"', script)
+        self.assertIn('"$SSH_WRAPPER" -- "sh -lc $quoted_command"', script)
 
     def test_collect_diagnostics_checks_new_and_legacy_ssh_assets(self) -> None:
         script = COLLECT.read_text(encoding="utf-8")
@@ -26,6 +39,9 @@ class DoctorScriptsTest(unittest.TestCase):
         self.assertIn("bin/cloud-claw-ssh", script)
         self.assertIn(".ssh/id_ed25519_agent_stack", script)
         self.assertIn(".ssh/id_ed25519_cloud_claw", script)
+        self.assertIn("vpn_note", script)
+        self.assertIn("vpn_nordvpn_token", script)
+        self.assertIn("<redacted>", script)
 
 
 if __name__ == "__main__":

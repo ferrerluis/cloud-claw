@@ -19,11 +19,13 @@ fi
 systemctl enable --now tailscaled
 
 tailscale_up() {
+  if tailscale status --json 2>/dev/null | jq -e '.Self.Online == true' >/dev/null 2>&1; then
+    echo "[tailscale-host] Already online; keeping current login."
+    tailscale set --hostname="$TAILSCALE_HOSTNAME" --accept-routes || true
+    return 0
+  fi
+
   if [ -n "$${TAILSCALE_AUTH_KEY:-}" ]; then
-    if tailscale status --json 2>/dev/null | jq -e '.Self.Online == true' >/dev/null 2>&1; then
-      echo "[tailscale-host] Re-authenticating host Tailscale with the supplied auth key..."
-      tailscale logout || true
-    fi
     tailscale up \
       --authkey="$TAILSCALE_AUTH_KEY" \
       --hostname="$TAILSCALE_HOSTNAME" \

@@ -44,6 +44,22 @@ Use this after `terraform apply` and during setup-time troubleshooting.
   - `bin/agent-stack-ssh -- sudo docker exec <tailscale_container> tailscale --socket=/tmp/tailscaled.sock status --json`
   - `bin/agent-stack-ssh -- sudo docker exec <tailscale_container> tailscale --socket=/tmp/tailscaled.sock serve status`
 
+## Workspace Codex updater rollout
+
+Use this sequence only when `workspace` is enabled.
+
+1. In the first approved runtime-only rollout, set `workspace_codex_auto_update_enabled = true` and keep `workspace_codex_auto_recover_interrupted_turns = false`. The fallback `workspace_codex_release` must be a stable `x.y.z` release.
+2. Verify fresh workspace SSH access and the canonical live command as the workspace user: `command -v codex` should be `/home/<workspace_username>/.local/bin/codex`, and `codex --version` should succeed.
+3. Confirm the non-catch-up timer is scheduled for the configured daily local time, rather than a startup run or idle-time polling. Confirm `agent-stack-diagnostics codex-update status` reports the effective version and timer state. Before a scheduled update, Codex must report its canonical managed daemon; the worker refuses an unmanaged app server or a competing legacy hourly updater instead of taking it over.
+4. Run the root-admin-only disposable-thread visual E2E probe in the desktop client. Prove that a deliberately interrupted turn is recognized and that the resulting recovery turn contains the safety instruction without replaying prior commands.
+5. Only after that probe succeeds, use a second targeted approved apply to set `workspace_codex_auto_recover_interrupted_turns = true`.
+
+The probe's one new recovery turn must use this safety instruction:
+
+> A scheduled Codex CLI update restarted the app-server and interrupted your prior turn. Do not repeat external or destructive actions. First inspect the thread and current workspace/runtime state, report what remains, and wait for the user before taking further action.
+
+The scheduled worker retries only pre-restart technical failures at +5, +15, and +35 minutes after the configured cutover. A successful `codex update` can restart the app server and interrupt active work. Recovery can append one deduplicated new safety-constrained turn only for a proven interrupted turn; it cannot restore an in-flight turn, replay the old request, or guarantee recovery of a turn created between the snapshot and restart. If update or post-restart verification fails, the updater restores the prior CLI target once and defers further work until the next night.
+
 ## Common setup-time failures
 
 - Apply failed before instance creation:

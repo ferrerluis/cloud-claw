@@ -7,7 +7,6 @@ After=agent-stack.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/systemctl start agent-stack.service
-ExecStop=/bin/systemctl stop agent-stack.service
 
 [Install]
 WantedBy=multi-user.target

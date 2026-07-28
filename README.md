@@ -25,7 +25,7 @@ Bootstrap is intentionally split into two provider-neutral phases:
 1. `cloud-init` runs a small first-boot loader on AWS, DigitalOcean, and Hetzner. It creates the `admin` user, installs the SSH key, waits for and mounts the persistent data volume at `/opt/agent-stack/data`, and writes `/opt/agent-stack/.loader-ready.json`.
 2. Terraform waits for `cloud-init status --wait`, connects over SSH as `admin`, uploads the rendered runtime bundle into a private `/opt/agent-stack/.staging-*` directory, and runs the shared installer with `sudo`.
 3. The installer writes `/opt/agent-stack/docker-compose.yml` and `/opt/agent-stack/.env`, installs Docker when needed, installs the host Codex CLI when `host_codex_cli_enabled = true`, validates the Compose config, and creates the `agent-stack` systemd service. `openclaw.service` remains as a compatibility wrapper.
-4. If `vpn_enabled = true`, installs a host OpenVPN client, starts `agent-stack-vpn.service`, and requires the VPN before starting the Docker stack so OpenClaw, Hermes, n8n, and the optional workspace egress through the tunnel.
+4. If `vpn_enabled = true`, installs the selected NordVPN OpenVPN or NordLynx backend, starts `agent-stack-vpn.service`, and requires a confirmed tunnel before starting the Docker stack so OpenClaw, Hermes, n8n, and the optional workspace egress through it.
 5. If enabled, configures Tailscale in `sidecar` mode by default, or directly on the host when `tailscale_mode = "host"`, and runs `tailscale serve` for OpenClaw over HTTPS on your tailnet.
 6. Seeds a stable gateway token and allowed browser origins (`gateway.controlUi.allowedOrigins`) so first login works without manual token copy/paste.
 7. Applies `openclaw_config_mode`:
@@ -56,7 +56,7 @@ OpenClaw, Hermes, n8n, Postgres, and the optional workspace run as Docker contai
 | Cloud credentials | AWS access key + secret, DigitalOcean API token, **or** Hetzner Cloud API token |
 | LLM credentials | At least one model provider credential: Anthropic/OpenAI/Groq/Gemini API key, or imported Codex auth for subscription-backed OpenAI |
 | Tailscale account (recommended) | [Sign up free](https://tailscale.com/) — generate an auth key |
-| VPN service credentials (optional) | Required only when `vpn_enabled = true`; for NordVPN use manual OpenVPN service credentials, not the normal account password |
+| VPN credentials (optional) | Required only when `vpn_enabled = true`; use manual service credentials for OpenVPN or a non-expiring Nord access token for NordLynx, never the normal account password |
 
 ---
 
@@ -276,17 +276,27 @@ Or enable the Codex workspace container:
 
 ```hcl
 enabled_services        = ["openclaw", "hermes", "n8n", "workspace"]
+workspace_codex_release = "0.145.0" # must be stable x.y.z when live updates are enabled
+workspace_codex_auto_update_enabled = false
+workspace_codex_auto_update_timezone = "America/New_York"
+workspace_codex_auto_update_time = "04:00"
+workspace_codex_auto_recover_interrupted_turns = false
 workspace_username      = "user"
 workspace_password      = "set-a-real-password"
 workspace_ssh_host_port = 2222
 workspace_ssh_public_keys = [
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExamplePublicKeyOnly user@example.com",
 ]
+workspace_fuse_enabled = false
 tailscale_enabled       = true
 tailscale_mode          = "host"
 ```
 
-The workspace image is Ubuntu-based, installs OpenSSH plus the Codex standalone installer, persists `/home/<workspace_username>` at `/opt/agent-stack/data/workspace/home`, and exposes SSH through the host at `workspace_ssh_host_port`. AgentStack does not open that port in cloud firewall rules; access is intended through the host's Tailscale address. `workspace_ssh_public_keys` accepts public key strings only; local private key paths, 1Password agent socket paths, and other client-side SSH details stay on each operator's machine. The workspace does not mount `/var/run/docker.sock`; diagnostics go through a forced-command host helper that only permits selected status, health, logs, inspect, and restart operations for AgentStack-managed services.
+The workspace image is Ubuntu-based, installs OpenSSH, rclone, FUSE tooling, Python 3, `pip`, `venv`, and the Codex standalone installer, persists `/home/<workspace_username>` at `/opt/agent-stack/data/workspace/home`, and exposes SSH through the host at `workspace_ssh_host_port`. It installs no third-party Python packages during image build. For workspace-specific Python tools, create an isolated user virtual environment, for example `python3 -m venv ~/.venvs/tooling`, then use `~/.venvs/tooling/bin/pip` rather than modifying the system Python.
+
+`workspace_codex_release` remains the exact reproducible image fallback. When live updates are enabled, it must be a stable `x.y.z` version. Set `workspace_codex_auto_update_enabled = true` only after the first approved workspace rollout. The updater runs the official [`codex update`](https://learn.chatgpt.com/docs/developer-commands#codex-update) command once per day at `workspace_codex_auto_update_time` in `workspace_codex_auto_update_timezone` (defaults: `04:00 America/New_York`). It is a non-catch-up hard cutover: it does not run at workspace startup, does not wait for idle work, and does not poll workspace processes. It retries only pre-restart technical failures at +5, +15, and +35 minutes after the configured cutover (04:05, 04:15, and 04:35 with the defaults). It restarts the app server only when a new CLI release was installed, so active Codex work can be interrupted. Before doing so, it requires Codex's canonical managed daemon and refuses an unmanaged app server or a competing legacy hourly updater rather than taking either one over.
+
+Keep `workspace_codex_auto_recover_interrupted_turns = false` for that first approved rollout. Run the root-admin-only disposable-thread visual E2E probe in the desktop client first; only a second targeted approved apply may enable recovery. When enabled, recovery creates exactly one deduplicated, safety-constrained new turn only for a proven interrupted turn. It never replays the prior prompt or commands and cannot restore an in-flight turn. A turn created after the app-server snapshot and before the restart can be missed entirely. A failed update or daemon verification restores the previous CLI target and leaves SSH available. On first enabled startup, a recognized prior user-local standalone Codex symlink is backed up and repointed at the canonical user-scoped installation; an unrelated user executable is never overwritten. You can inspect the effective command with `agent-stack-diagnostics codex-update status` or queue immediate hard maintenance with `agent-stack-diagnostics codex-update`; the immediate command uses the same retry, rollback, and recovery policy. The workspace user gets neither Docker nor sudo: the queue command is a forced host-side operation, not a shell. AgentStack does not open that port in cloud firewall rules; access is intended through the host's Tailscale address. `workspace_ssh_public_keys` accepts public key strings only; local private key paths, 1Password agent socket paths, and other client-side SSH details stay on each operator's machine. Set `workspace_fuse_enabled = true` only when the workspace needs user-space mounts such as `rclone mount`; it exposes `/dev/fuse`, grants `SYS_ADMIN`, and disables AppArmor confinement for that container.
 
 To make `~/workspace` the Google Drive filesystem itself, enable the managed rclone FUSE mount:
 
@@ -368,21 +378,24 @@ When public domains are enabled, firewalls open ports 80 and 443. UI routes requ
 
 ## Host VPN Egress
 
-Set `vpn_enabled = true` to route host and Docker service egress through a host OpenVPN tunnel. This is intended for cases where VPS/datacenter IP reputation causes excessive blocking for browser automation, n8n HTTP requests, or the workspace container.
+Set `vpn_enabled = true` to route host and Docker service egress through a managed host VPN tunnel. The backward-compatible backend is manual OpenVPN; `nordvpn_nordlynx` uses Nord's native Linux app and its WireGuard-based NordLynx tunnel.
 
-For NordVPN, use manual OpenVPN service credentials from the Nord Account dashboard and a specific `.ovpn` config URL from Nord's OpenVPN config archive. Do not use your normal Nord account email/password.
+For OpenVPN, use manual service credentials from the Nord Account dashboard and a specific `.ovpn` config URL. For NordLynx, [generate a non-expiring access token](https://support.nordvpn.com/hc/en-us/articles/20286980309265-How-to-use-a-token-with-NordVPN-on-Linux), protect the Nord account with MFA, and store the token only in the sensitive Terraform input. Do not use your normal Nord account email/password.
 
 ```hcl
-vpn_enabled            = true
-vpn_provider           = "nordvpn_openvpn"
-vpn_openvpn_config_url = "https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/us0000.nordvpn.com.udp.ovpn"
-vpn_username           = "..."
-vpn_password           = "..."
-vpn_bypass_cidrs       = ["203.0.113.5/32"]
-vpn_disable_ipv6       = true
+vpn_enabled                = true
+vpn_provider               = "nordvpn_nordlynx"
+vpn_nordvpn_token          = "..."
+vpn_nordvpn_connect_target = "United_States"
+vpn_bypass_cidrs           = ["203.0.113.5/32"]
+vpn_disable_ipv6           = true
 ```
 
-`vpn_bypass_cidrs` is required when the VPN is enabled. Include the admin IP/CIDR you use for SSH, or `100.64.0.0/10` if you administer the host through Tailscale host mode. Without a bypass route, a full-tunnel VPN can route SSH replies out through the VPN interface and cut off access to the VPS.
+For the OpenVPN backend, keep `vpn_provider = "nordvpn_openvpn"` and set `vpn_openvpn_config_url`, `vpn_username`, and `vpn_password` instead. Keeping those values while testing NordLynx makes rollback possible without reconstructing the configuration.
+
+`vpn_bypass_cidrs` is required for both backends. Include at least one public/admin fallback CIDR such as your current SSH client `/32`. Never put `100.64.0.0/10` or another overlapping Tailscale CIDR in this input: the VPN manager allowlists Tailscale internally while the existing `tailscale0` route remains authoritative.
+
+The first OpenVPN-to-NordLynx transition backs up the OpenVPN unit/configuration and arms a 20-minute rollback timer. After fresh host/workspace SSH checks, a reboot, and post-reboot VPN/container checks pass, disarm it with `sudo /opt/agent-stack/agent-stack-vpn confirm`. Use `sudo /opt/agent-stack/agent-stack-vpn rollback` to return to the saved OpenVPN backend. The initial canary keeps Kill Switch, Meshnet, and Threat Protection off to reduce lockout and latency risk.
 
 A VPN changes egress IP and DNS path; it does not guarantee that Google, Indeed, Cloudflare-protected sites, or job boards will stop challenging automation. Shared commercial VPN IPs are also commonly fingerprinted. A dedicated/static VPN IP or a more trusted proxy can still be necessary.
 
@@ -446,6 +459,11 @@ A VPN changes egress IP and DNS path; it does not guarantee that Google, Indeed,
 | `starter_soul_profile` | `"balanced"` | Starter SOUL profile (`balanced`, `builder`, `researcher`) |
 | `gateway_token` | `""` | Optional fixed gateway token (blank = Terraform auto-generates) |
 | `enabled_services` | `["openclaw", "hermes", "n8n"]` | Services to run (`openclaw`, `hermes`, `n8n`, optional `workspace`) |
+| `workspace_codex_release` | `"0.145.0"` | Exact Codex CLI release baked into the optional workspace image; must be stable `x.y.z` when live updates are enabled |
+| `workspace_codex_auto_update_enabled` | `false` | Opt in to root-managed daily latest-stable hard maintenance; no startup or idle-time updates, and a new release can interrupt active work |
+| `workspace_codex_auto_update_timezone` | `"America/New_York"` | IANA timezone for the daily update timer |
+| `workspace_codex_auto_update_time` | `"04:00"` | Daily local maintenance time in 24-hour `HH:MM` format |
+| `workspace_codex_auto_recover_interrupted_turns` | `false` | Enable only with a second approved apply after the desktop E2E probe; send one constrained new turn for proven interrupted work |
 | `workspace_username` | `"user"` | User created inside the optional workspace container |
 | `workspace_password` | `""` | Sensitive password for workspace SSH; required when `workspace` is enabled |
 | `workspace_ssh_host_port` | `2222` | Host port mapped to workspace SSH; do not open in provider firewalls |
@@ -455,12 +473,15 @@ A VPN changes egress IP and DNS path; it does not guarantee that Google, Indeed,
 | `workspace_drive_rclone_config_base64` | `""` | Sensitive base64 rclone config; a custom Google OAuth client is required |
 | `workspace_drive_vfs_cache_max_size` | `"10G"` | Maximum local disk used by rclone's full VFS cache |
 | `workspace_drive_vfs_cache_min_free_space` | `"2G"` | Free disk space preserved by rclone's VFS cache |
+| `workspace_fuse_enabled` | `false` | Expose `/dev/fuse` to the workspace for user-space mounts such as `rclone mount`; grants the workspace container `SYS_ADMIN` |
 | `vpn_enabled` | `false` | Install and start host OpenVPN before the Docker stack |
 | `vpn_provider` | `"nordvpn_openvpn"` | VPN integration; v1 supports NordVPN manual OpenVPN |
+| `vpn_nordvpn_token` | `""` | Sensitive non-expiring access token required only by NordLynx |
+| `vpn_nordvpn_connect_target` | `""` | Optional Nord country/server target such as `United_States` |
 | `vpn_openvpn_config_url` | `""` | HTTPS URL for the OpenVPN `.ovpn` server config |
 | `vpn_username` | `""` | Sensitive VPN service username |
 | `vpn_password` | `""` | Sensitive VPN service password |
-| `vpn_bypass_cidrs` | `[]` | IPv4 CIDRs that keep using the original host gateway |
+| `vpn_bypass_cidrs` | `[]` | Public/admin fallback CIDRs; Tailscale CIDRs are rejected and managed internally |
 | `vpn_disable_ipv6` | `true` | Disable host IPv6 while VPN is enabled to avoid IPv6 egress leaks |
 | `vpn_healthcheck_url` | `"https://api.ipify.org"` | URL diagnostics use to report current public egress IP |
 | `hermes_image` | `"nousresearch/hermes-agent:latest"` | Hermes Docker image |
@@ -532,7 +553,8 @@ A VPN changes egress IP and DNS path; it does not guarantee that Google, Indeed,
 - The Tailscale sidecar requires `/dev/net/tun` and `NET_ADMIN` / `NET_RAW` capabilities. Host mode avoids those container capabilities but installs Tailscale directly on the VM.
 - The optional workspace uses password SSH inside the container and maps port `workspace_ssh_host_port` on the host, but AgentStack does not open that port in provider firewalls. Keep it reachable through the tailnet.
 - The workspace does not mount the Docker socket. Its `agent-stack-diagnostics` command reaches a host-side forced-command helper with a narrow allowlist.
-- **Host VPN egress**: `vpn_enabled = true` changes host routing before the Docker stack starts. Set `vpn_bypass_cidrs` to preserve SSH/Tailscale administration, and treat `vpn_username` / `vpn_password` as Terraform-state secrets.
+- The optional live Codex updater is root-mediated and disabled by default. It runs a scheduled hard maintenance cutover at the configured local time, never at startup or after an idle wait, and can interrupt active Codex work only when a new CLI release requires an app-server restart. It never grants the workspace user Docker or sudo; `agent-stack-diagnostics codex-update` can only queue its fixed systemd unit.
+- **Host VPN egress**: `vpn_enabled = true` changes host routing before the Docker stack starts. Put a public/admin fallback in `vpn_bypass_cidrs`, never the Tailscale range, and treat the OpenVPN credentials and `vpn_nordvpn_token` as Terraform-state secrets.
 - Only SSH (port 22) and Tailscale UDP (41641) are opened in firewall rules by default. Ports 80/443 open only when public domains are enabled.
 - `gateway_token` and `dashboard_url_with_token_import` outputs contain credentials. Treat Terraform output/state as sensitive.
 - **API keys** are rendered by Terraform into the runtime bundle and uploaded over SSH into a private `/opt/agent-stack/.staging-*` directory before being installed as `/opt/agent-stack/.env`. They are still present in Terraform state and local plan/apply material, so treat state files and plans as sensitive.
@@ -619,6 +641,9 @@ hcloud volume create-snapshot <volume-id> --description "agent-stack-$(date +%Y%
 ## Google Drive workspace FUSE (optional)
 
 Google Drive integration is managed through the `workspace_drive_*` Terraform variables described in the workspace section above. It mounts the remote directly at the workspace user's `~/workspace`; there is no second local working tree and no periodic sidecar sync. Do not hand-edit the installed Compose file or run a separate rclone daemon, because those changes bypass Terraform validation, mount supervision, and residue recovery safeguards.
+Google Drive integration is managed through the `workspace_drive_*` Terraform variables described in the workspace section above. It mounts the remote directly at the workspace user's `~/workspace`; there is no second local working tree and no periodic sidecar sync. Do not hand-edit the installed Compose file or run a separate rclone daemon, because those changes bypass Terraform validation, mount supervision, and residue recovery safeguards.
+
+For a different user-managed FUSE mount, enable `workspace_fuse_enabled = true`. This exposes `/dev/fuse`, grants `SYS_ADMIN`, and disables AppArmor confinement for the workspace container; verify it with `agent-stack-diagnostics inspect workspace`.
 
 ---
 

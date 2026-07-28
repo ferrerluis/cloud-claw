@@ -61,6 +61,11 @@ redact_output() {
     return
   fi
 
+  if [[ "$value" == *"vpn_nordvpn_token"* ]]; then
+    printf '%s' "$value" | sed -E 's/(vpn_nordvpn_token[[:space:]]*=[[:space:]]*)("[^"]*"|[^[:space:]]+)/\1<redacted>/g'
+    return
+  fi
+
   printf '%s' "$value"
 }
 
@@ -119,6 +124,7 @@ if command -v terraform >/dev/null 2>&1 && terraform -chdir="$ROOT_DIR" output -
     repo_ssh_command \
     resolved_ssh_public_key_source \
     tailscale_note \
+    vpn_note \
     dashboard_url \
     dashboard_url_with_token_import \
     openclaw_url \

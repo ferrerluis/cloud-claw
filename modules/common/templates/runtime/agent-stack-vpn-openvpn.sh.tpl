@@ -14,6 +14,7 @@ VPN_HEALTHCHECK_URL="${vpn_healthcheck_url}"
 config_dir=/etc/agent-stack-vpn
 service_path=/etc/systemd/system/agent-stack-vpn.service
 routes_path=/usr/local/bin/agent-stack-vpn-routes
+managed_dropin_dir=/etc/systemd/system/agent-stack-vpn.service.d
 
 log() {
   echo "[vpn] $*"
@@ -24,9 +25,15 @@ fail() {
   exit 1
 }
 
+clear_managed_vpn_dropins() {
+  rm -f "$managed_dropin_dir/agent-stack-recovery.conf"
+  rmdir "$managed_dropin_dir" 2>/dev/null || true
+}
+
 disable_vpn() {
   log "Disabling host VPN service."
   systemctl disable --now agent-stack-vpn.service 2>/dev/null || true
+  clear_managed_vpn_dropins
   rm -f "$service_path" "$routes_path"
   rm -rf "$config_dir"
   if [ -f /etc/sysctl.d/99-agent-stack-vpn-ipv6.conf ]; then
@@ -69,7 +76,28 @@ add_route() {
   local gateway="$2"
   local dev="$3"
   [ -n "$cidr" ] || return 0
+  if is_tailscale_ipv4_cidr "$cidr"; then
+    echo "preserving Tailscale-managed route for $cidr"
+    return 0
+  fi
   ip -4 route replace "$cidr" via "$gateway" dev "$dev"
+}
+
+is_tailscale_ipv4_cidr() {
+  local ip
+  ip="$${1%%/*}"
+  printf '%s\n' "$ip" | awk -F. '
+    NF != 4 { exit 1 }
+    {
+      for (i = 1; i <= 4; i++) {
+        if ($i !~ /^[0-9]+$/ || $i < 0 || $i > 255) {
+          exit 1
+        }
+      }
+      n = ($1 * 16777216) + ($2 * 65536) + ($3 * 256) + $4
+      exit !(n >= 1681915904 && n <= 1686110207)
+    }
+  '
 }
 
 setup_routes() {
@@ -189,6 +217,9 @@ enable_vpn() {
   install_openvpn
   install -d -m 0700 "$config_dir"
   install -m 0600 "$staging/vpn-auth.txt" "$config_dir/auth.txt"
+  printf '%s\n' 'nordvpn_openvpn' > "$config_dir/provider"
+  chmod 0600 "$config_dir/provider"
+  clear_managed_vpn_dropins
   write_route_helper
   write_openvpn_config
   configure_ipv6

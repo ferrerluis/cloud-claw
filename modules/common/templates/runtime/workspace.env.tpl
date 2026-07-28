@@ -1,6 +1,9 @@
 WORKSPACE_USERNAME=${workspace_username}
 WORKSPACE_PASSWORD=${workspace_password}
 WORKSPACE_AUTHORIZED_KEYS_BASE64=${workspace_ssh_public_keys_base64}
+WORKSPACE_FUSE_ENABLED=${workspace_fuse_enabled}
+WORKSPACE_CODEX_AUTO_UPDATE_ENABLED=${workspace_codex_auto_update_enabled}
+WORKSPACE_CODEX_AUTO_RECOVER_INTERRUPTED_TURNS=${workspace_codex_auto_recover_interrupted_turns}
 CODEX_HOME=/home/${workspace_username}/.codex
 WORKSPACE_DRIVE_FUSE_ENABLED=${workspace_drive_fuse_enabled}
 WORKSPACE_DRIVE_REMOTE_BASE64=${workspace_drive_remote_base64}

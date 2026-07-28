@@ -39,12 +39,18 @@ require_file openclaw.service
 require_file enabled-services.json
 require_file workspace.env
 require_file host-tailscale-bootstrap.sh
+require_file agent-stack-vpn
 require_file agent-stack-vpn-openvpn
 require_file workspace.Dockerfile
 require_file workspace-entrypoint.sh
 require_file workspace-drive-healthcheck
 require_file agent-stack-workspace-drive
 require_file workspace-rclone.conf.base64
+require_file workspace-codex-update.sh
+require_file workspace-codex-control.py
+require_file agent-stack-workspace-codex-update
+require_file agent-stack-workspace-codex-update.service
+require_file agent-stack-workspace-codex-update.timer
 require_file agent-stack-diagnostics
 require_file agent-stack-diagnostics-ssh
 
@@ -288,6 +294,19 @@ EOF
   echo "[workspace] Diagnostics bridge installed for workspace container."
 }
 
+build_workspace_image() {
+  local build_context="$app/.workspace-image-context"
+  rm -rf "$build_context"
+  install -d -m 0700 "$build_context"
+  install -m 0644 "$app/workspace.Dockerfile" "$build_context/Dockerfile"
+  install -m 0755 "$app/workspace-entrypoint.sh" "$build_context/workspace-entrypoint.sh"
+  install -m 0755 "$app/workspace-drive-healthcheck" "$build_context/workspace-drive-healthcheck"
+  install -m 0755 "$app/workspace-codex-update.sh" "$build_context/workspace-codex-update.sh"
+  install -m 0755 "$app/workspace-codex-control.py" "$build_context/workspace-codex-control.py"
+  docker build -t agent-stack-workspace:local -f "$build_context/Dockerfile" "$build_context"
+  rm -rf "$build_context"
+}
+
 install_workspace_runtime() {
   if [ "${workspace_enabled}" != "true" ]; then
     echo "[workspace] Skipped (workspace disabled)."
@@ -297,20 +316,16 @@ install_workspace_runtime() {
   echo "[workspace] Installing workspace runtime files..."
   install -d -m 0755 "$app/data/workspace"
   install -d -m 0755 "$app/data/workspace/home"
+  install -d -m 0700 -o root -g root "$app/data/workspace/ssh-host-keys"
   install -m 0644 "$staging/workspace.Dockerfile" "$app/workspace.Dockerfile"
   install -m 0755 "$staging/workspace-entrypoint.sh" "$app/workspace-entrypoint.sh"
   install -m 0755 "$staging/workspace-drive-healthcheck" "$app/workspace-drive-healthcheck"
+  install -m 0755 "$staging/workspace-codex-update.sh" "$app/workspace-codex-update.sh"
+  install -m 0755 "$staging/workspace-codex-control.py" "$app/workspace-codex-control.py"
   install_workspace_diagnostics_bridge
 
   echo "[workspace] Building local workspace image..."
-  local build_context="$app/.workspace-image-context"
-  rm -rf "$build_context"
-  install -d -m 0700 "$build_context"
-  install -m 0644 "$app/workspace.Dockerfile" "$build_context/Dockerfile"
-  install -m 0755 "$app/workspace-entrypoint.sh" "$build_context/workspace-entrypoint.sh"
-  install -m 0755 "$app/workspace-drive-healthcheck" "$build_context/workspace-drive-healthcheck"
-  docker build -t agent-stack-workspace:local -f "$build_context/Dockerfile" "$build_context"
-  rm -rf "$build_context"
+  build_workspace_image
 }
 
 workspace_drive_config_value() {
@@ -385,6 +400,33 @@ prepare_workspace_drive() {
   echo "[workspace-drive] Config and protected empty mountpoint validated."
 }
 
+backup_workspace_image() {
+  local image_id
+
+  [ "${workspace_enabled}" = "true" ] || return 0
+  image_id="$(docker image inspect --format '{{.Id}}' agent-stack-workspace:local 2>/dev/null || true)"
+  if [ -n "$image_id" ]; then
+    printf '%s\n' "$image_id" >"$previous/workspace-image-id"
+    chmod 0600 "$previous/workspace-image-id"
+  fi
+}
+
+restore_workspace_image() {
+  local image_id
+
+  [ "${workspace_enabled}" = "true" ] || return 0
+  image_id="$(cat "$previous/workspace-image-id" 2>/dev/null || true)"
+  if [ -n "$image_id" ] && docker image inspect "$image_id" >/dev/null 2>&1; then
+    docker tag "$image_id" agent-stack-workspace:local
+    return 0
+  fi
+  if [ -f "$app/workspace.Dockerfile" ]; then
+    build_workspace_image
+    return 0
+  fi
+  return 1
+}
+
 configure_host_tailscale() {
   if [ "${tailscale_host_enabled}" != "true" ]; then
     echo "[tailscale-host] Skipped (tailscale_mode=${tailscale_mode})."
@@ -401,14 +443,98 @@ configure_host_tailscale() {
 configure_host_vpn() {
   if [ "${vpn_enabled}" != "true" ]; then
     echo "[vpn] Skipped (vpn_enabled=false)."
-    if [ -x "$app/agent-stack-vpn-openvpn" ]; then
+    if [ -x "$app/agent-stack-vpn" ]; then
+      "$app/agent-stack-vpn" disable || true
+    elif [ -x "$app/agent-stack-vpn-openvpn" ]; then
       "$app/agent-stack-vpn-openvpn" disable || true
     fi
     return 0
   fi
 
   echo "[vpn] Configuring host-level VPN..."
-  "$app/agent-stack-vpn-openvpn" enable "$staging"
+  "$app/agent-stack-vpn" enable "$staging"
+}
+
+configure_workspace_codex_auto_update() {
+  local unit="agent-stack-workspace-codex-update.service"
+  local timer="agent-stack-workspace-codex-update.timer"
+  local timezone="${workspace_codex_auto_update_timezone}"
+
+  if [ "${workspace_enabled}" != "true" ] || [ "${workspace_codex_auto_update_enabled}" != "true" ]; then
+    echo "[workspace-codex-update] Disabled; removing host timer and worker."
+    systemctl disable --now "$timer" 2>/dev/null || true
+    systemctl stop "$unit" 2>/dev/null || true
+    rm -f "/etc/systemd/system/$unit" "/etc/systemd/system/$timer" \
+      /usr/local/bin/agent-stack-workspace-codex-update
+    systemctl daemon-reload
+    return 0
+  fi
+
+  if [ ! -f "/usr/share/zoneinfo/$timezone" ]; then
+    echo "[workspace-codex-update] configured timezone is not installed: $timezone" >&2
+    return 1
+  fi
+
+  echo "[workspace-codex-update] Installing root-mediated stable-channel updater."
+  # A pre-hard-cutover release could remain active indefinitely while it
+  # polled for a quiet workspace. Stop its timer and worker before replacing
+  # the executable so it cannot inherit the new command contract mid-run.
+  systemctl disable --now "$timer" 2>/dev/null || true
+  systemctl stop "$unit" 2>/dev/null || true
+  install -d -m 0700 -o root -g root /var/lib/agent-stack/workspace-codex-update
+  install -m 0755 "$staging/agent-stack-workspace-codex-update" \
+    /usr/local/bin/agent-stack-workspace-codex-update || return 1
+  install -m 0644 "$staging/agent-stack-workspace-codex-update.service" \
+    "/etc/systemd/system/$unit" || return 1
+  install -m 0644 "$staging/agent-stack-workspace-codex-update.timer" \
+    "/etc/systemd/system/$timer" || return 1
+  systemctl daemon-reload || return 1
+  systemctl reset-failed "$unit" 2>/dev/null || true
+  systemctl enable --now "$timer" || return 1
+}
+
+backup_workspace_codex_auto_update_host() {
+  local backup="$previous/workspace-codex-update-host"
+  local source target
+
+  rm -rf "$backup"
+  install -d -m 0700 "$backup"
+  for source in \
+    /usr/local/bin/agent-stack-workspace-codex-update \
+    /etc/systemd/system/agent-stack-workspace-codex-update.service \
+    /etc/systemd/system/agent-stack-workspace-codex-update.timer; do
+    [ -e "$source" ] || continue
+    target="$backup/$(basename "$source")"
+    cp -a "$source" "$target"
+  done
+}
+
+restore_workspace_codex_auto_update_host() {
+  local backup="$previous/workspace-codex-update-host"
+  local source target
+
+  systemctl disable --now agent-stack-workspace-codex-update.timer 2>/dev/null || true
+  systemctl stop agent-stack-workspace-codex-update.service 2>/dev/null || true
+  rm -f /usr/local/bin/agent-stack-workspace-codex-update \
+    /etc/systemd/system/agent-stack-workspace-codex-update.service \
+    /etc/systemd/system/agent-stack-workspace-codex-update.timer
+  for source in "$backup"/*; do
+    [ -e "$source" ] || continue
+    case "$(basename "$source")" in
+      agent-stack-workspace-codex-update)
+        target=/usr/local/bin/agent-stack-workspace-codex-update
+        ;;
+      agent-stack-workspace-codex-update.service|agent-stack-workspace-codex-update.timer)
+        target="/etc/systemd/system/$(basename "$source")"
+        ;;
+      *) continue ;;
+    esac
+    cp -a "$source" "$target"
+  done
+  systemctl daemon-reload
+  if [ -e /etc/systemd/system/agent-stack-workspace-codex-update.timer ]; then
+    systemctl enable --now agent-stack-workspace-codex-update.timer || true
+  fi
 }
 
 wait_agent_stack_initial_restart() {
@@ -432,6 +558,9 @@ wait_agent_stack_initial_restart() {
         else
           health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || true)"
           [ "$health_status" = "healthy" ] || all_ready=0
+          if [ "${workspace_codex_auto_update_enabled}" = "true" ] && ! docker exec --user ${workspace_username} "$container_id" env HOME=/home/${workspace_username} CODEX_HOME=/home/${workspace_username}/.codex PATH=/home/${workspace_username}/.local/bin:/usr/local/bin:/usr/bin:/bin /bin/sh -c 'expected="$(readlink -f "$HOME/.codex/packages/standalone/current/codex" 2>/dev/null || true)"; actual="$(readlink -f "$HOME/.local/bin/codex" 2>/dev/null || true)"; test "$(command -v codex)" = "$HOME/.local/bin/codex" && test -n "$expected" && test "$actual" = "$expected" && codex --version >/dev/null'; then
+            all_ready=0
+          fi
         fi
       fi
       if [ "$all_ready" -eq 1 ]; then
@@ -451,9 +580,10 @@ docker compose --env-file "$staging/.env" -f "$staging/docker-compose.yml" confi
 
 rm -rf "$previous"
 install -d -m 0700 "$previous"
-for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh workspace-drive-healthcheck agent-stack-workspace-drive workspace-rclone; do
+for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh workspace-drive-healthcheck workspace-codex-update.sh workspace-codex-control.py agent-stack-workspace-drive workspace-rclone; do
   [ -e "$app/$path" ] && cp -a "$app/$path" "$previous/" || true
 done
+backup_workspace_image
 
 install -m 0644 "$staging/docker-compose.yml" "$app/docker-compose.yml"
 install -m 0600 "$staging/.env" "$app/.env"
@@ -477,6 +607,9 @@ if [ -f "$staging/tailscale-bootstrap.sh" ]; then
 fi
 if [ -f "$staging/host-tailscale-bootstrap.sh" ]; then
   install -m 0700 "$staging/host-tailscale-bootstrap.sh" "$app/host-tailscale-bootstrap.sh"
+fi
+if [ -f "$staging/agent-stack-vpn" ]; then
+  install -m 0700 "$staging/agent-stack-vpn" "$app/agent-stack-vpn"
 fi
 if [ -f "$staging/agent-stack-vpn-openvpn" ]; then
   install -m 0700 "$staging/agent-stack-vpn-openvpn" "$app/agent-stack-vpn-openvpn"
@@ -516,7 +649,7 @@ if [ "$restart_status" -ne 0 ]; then
 fi
 if ! wait_agent_stack_initial_restart; then
   echo "[runtime] restart did not recover; restoring previous runtime files" >&2
-  for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh workspace-drive-healthcheck agent-stack-workspace-drive workspace-rclone; do
+  for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh workspace-drive-healthcheck workspace-codex-update.sh workspace-codex-control.py agent-stack-workspace-drive workspace-rclone; do
     rm -rf "$app/$path"
     if [ -e "$previous/$path" ]; then
       cp -a "$previous/$path" "$app/$path"
@@ -525,11 +658,18 @@ if ! wait_agent_stack_initial_restart; then
   if [ -f "$app/agent-stack-workspace-drive" ]; then
     install -m 0755 "$app/agent-stack-workspace-drive" /usr/local/bin/agent-stack-workspace-drive
   fi
+  restore_workspace_image || echo "[workspace] WARNING: could not restore the prior workspace image" >&2
   systemctl restart agent-stack || true
   fail "agent-stack restart failed"
 fi
 systemctl start openclaw || true
 configure_host_tailscale
+backup_workspace_codex_auto_update_host
+if ! configure_workspace_codex_auto_update; then
+  echo "[workspace-codex-update] installation failed; restoring the prior host updater files" >&2
+  restore_workspace_codex_auto_update_host
+  fail "workspace Codex updater installation failed"
+fi
 
 OPENCLAW_CONFIG="$app/data/openclaw/openclaw.json"
 OPENCLAW_ENABLED="${openclaw_enabled}"
@@ -1119,7 +1259,7 @@ if [ "$OPENCLAW_ENABLED" = "true" ]; then
   fi
 fi
 if [ "${workspace_enabled}" = "true" ]; then
-  echo " Workspace SSH: ssh -p ${workspace_ssh_host_port} ${workspace_username}@${project_name} (via Tailscale)"
+  echo " Workspace SSH: ssh -p ${workspace_ssh_host_port} ${workspace_username}@${workspace_ssh_host} (via Tailscale)"
 fi
 echo " Logs: journalctl -u agent-stack -f"
 echo "========================================================"

@@ -176,9 +176,24 @@ enabled_services = [
 
 # Optional Codex workspace container. Add "workspace" above to enable.
 # Password is used only for SSH into the workspace container over Tailscale.
-workspace_username      = "user"
-workspace_password      = ""
-workspace_ssh_host_port = 2222
+workspace_codex_release             = "0.145.0" # pinned CLI release baked into the workspace image
+# Opt in only after the first approved workspace rollout. This requires the
+# pinned fallback above to be a stable x.y.z release. It checks the stable
+# channel only at the configured daily cutover (never at startup or after an
+# idle wait) and may interrupt active Codex work when a new CLI release
+# requires an app-server restart. Technical retries are +5, +15, and +35
+# minutes after the configured cutover (04:05, 04:15, and 04:35 by default).
+workspace_codex_auto_update_enabled = false
+workspace_codex_auto_update_timezone = "America/New_York"
+workspace_codex_auto_update_time     = "04:00"
+# Leave false for the first approved rollout. Enable only in a second targeted
+# approved apply after the root-admin-only disposable-thread desktop E2E probe
+# proves safe interrupted-turn recovery.
+workspace_codex_auto_recover_interrupted_turns = false
+workspace_username                  = "user"
+workspace_password                  = ""
+workspace_ssh_host_port             = 2222
+workspace_fuse_enabled              = false
 workspace_ssh_public_keys = [
   # "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExamplePublicKeyOnly user@example.com",
 ]
@@ -198,23 +213,27 @@ workspace_drive_vfs_cache_min_free_space = "2G"
 
 # ── Optional host VPN egress ────────────────────────────────────
 # Routes host + Docker service egress through a VPN tunnel after provisioning.
-# For NordVPN, use manual OpenVPN service credentials from Nord Account:
-# NordVPN -> Set up NordVPN manually -> service credentials.
-# Do not use your normal Nord account email/password here.
+# Keep nordvpn_openvpn for the backward-compatible manual client, or select
+# nordvpn_nordlynx to use Nord's native Linux app and WireGuard-based tunnel.
+# Do not use your normal Nord account email/password for either backend.
 #
-# Pick a specific Nord .ovpn URL from:
+# OpenVPN: use manual service credentials and pick a specific .ovpn URL from:
 # https://downloads.nordcdn.com/configs/archives/servers/ovpn.zip
+# NordLynx: generate a non-expiring access token in Nord Account and store it
+# only in the sensitive vpn_nordvpn_token input. United_States selects Nord's
+# recommended US server rather than pinning one hostname.
 #
-# You must include at least one bypass CIDR so SSH/Tailscale access to the VPS
-# keeps using the original host gateway after the VPN changes the default route.
-vpn_enabled            = false
-vpn_provider           = "nordvpn_openvpn"
-vpn_openvpn_config_url = ""
-vpn_username           = ""
-vpn_password           = ""
+# You must include at least one public/admin fallback CIDR. Never add the
+# Tailscale 100.64.0.0/10 range here; the VPN manager preserves it separately.
+vpn_enabled                = false
+vpn_provider               = "nordvpn_openvpn"
+vpn_nordvpn_token          = ""
+vpn_nordvpn_connect_target = ""
+vpn_openvpn_config_url     = ""
+vpn_username               = ""
+vpn_password               = ""
 vpn_bypass_cidrs = [
   # "203.0.113.5/32", # your current admin IP for public SSH
-  # "100.64.0.0/10",  # optional: host Tailscale IPv4 range
 ]
 vpn_disable_ipv6    = true
 vpn_healthcheck_url = "https://api.ipify.org"
