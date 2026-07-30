@@ -41,6 +41,8 @@
   - The fail-closed preflight found files beneath the intended mountpoint. Run `sudo agent-stack-workspace-drive recovery-dry-run`; upload and quarantine require separate explicit confirmation flags.
 - Workspace container is restarting or unhealthy with Drive FUSE enabled:
   - Check `/dev/fuse`, the custom OAuth client fields, rclone logs, and `sudo agent-stack-workspace-drive status`. SSH is intentionally withheld whenever the mount cannot be verified.
+- `findmnt` reports `fuse.rclone` but reads fail with `Transport endpoint is not connected`:
+  - The kernel retained a stale FUSE record after rclone exited. Managed Drive mode exits and lets Docker restart the workspace. For an already-deployed legacy `workspace_fuse_enabled` container, install the tracked `workspace_drive_mount_watchdog.sh` as `~/.local/bin/workspace-drive-mount`, run `workspace-drive-mount start`, and verify `workspace-drive-mount doctor`. The watchdog uses `fusermount3 -uz` before remounting; never start a second unsupervised rclone process.
 
 ## Model and provider mismatch
 

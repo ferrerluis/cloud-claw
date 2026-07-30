@@ -641,9 +641,10 @@ hcloud volume create-snapshot <volume-id> --description "agent-stack-$(date +%Y%
 ## Google Drive workspace FUSE (optional)
 
 Google Drive integration is managed through the `workspace_drive_*` Terraform variables described in the workspace section above. It mounts the remote directly at the workspace user's `~/workspace`; there is no second local working tree and no periodic sidecar sync. Do not hand-edit the installed Compose file or run a separate rclone daemon, because those changes bypass Terraform validation, mount supervision, and residue recovery safeguards.
-Google Drive integration is managed through the `workspace_drive_*` Terraform variables described in the workspace section above. It mounts the remote directly at the workspace user's `~/workspace`; there is no second local working tree and no periodic sidecar sync. Do not hand-edit the installed Compose file or run a separate rclone daemon, because those changes bypass Terraform validation, mount supervision, and residue recovery safeguards.
 
-For a different user-managed FUSE mount, enable `workspace_fuse_enabled = true`. This exposes `/dev/fuse`, grants `SYS_ADMIN`, and disables AppArmor confinement for the workspace container; verify it with `agent-stack-diagnostics inspect workspace`.
+For a different user-managed FUSE mount, enable `workspace_fuse_enabled = true`. Never enable it together with `workspace_drive_fuse_enabled`. It exposes `/dev/fuse`, grants `SYS_ADMIN`, and disables AppArmor confinement for the workspace container; verify it with `agent-stack-diagnostics inspect workspace`.
+
+Legacy containers that already mounted Drive through `workspace_fuse_enabled` can use `skills/agent-stack-doctor/scripts/workspace_drive_mount_watchdog.sh` as a transitional repair. Install it as the workspace user's `~/.local/bin/workspace-drive-mount` and install the adjacent shell guard as `~/.config/rclone/workspace-drive-guard.sh`. The helper supervises foreground rclone, clears stale FUSE endpoints, and blocks accidental local fallback writes, but it is not the deployment model for new stacks and cannot provide the managed mode's root-owned fail-closed mountpoint.
 
 ---
 

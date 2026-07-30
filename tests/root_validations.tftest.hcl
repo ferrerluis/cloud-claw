@@ -420,6 +420,22 @@ run "rejects_workspace_fuse_without_workspace_service" {
   ]
 }
 
+run "rejects_generic_and_managed_workspace_fuse_together" {
+  command = plan
+
+  variables {
+    enabled_services                     = ["openclaw", "workspace"]
+    workspace_password                   = "workspace-password-agent-stack-tests"
+    workspace_fuse_enabled               = true
+    workspace_drive_fuse_enabled         = true
+    workspace_drive_rclone_config_base64 = "Y29uZmln"
+  }
+
+  expect_failures = [
+    var.workspace_fuse_enabled,
+  ]
+}
+
 run "rejects_workspace_codex_auto_update_without_workspace_service" {
   command = plan
 

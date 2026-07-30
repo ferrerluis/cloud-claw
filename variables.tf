@@ -669,6 +669,11 @@ variable "workspace_fuse_enabled" {
     condition     = !var.workspace_fuse_enabled || contains(var.enabled_services, "workspace")
     error_message = "workspace_fuse_enabled requires enabled_services to include \"workspace\"."
   }
+
+  validation {
+    condition     = !(var.workspace_fuse_enabled && var.workspace_drive_fuse_enabled)
+    error_message = "workspace_fuse_enabled and workspace_drive_fuse_enabled cannot both be true. Use workspace_drive_fuse_enabled for Google Drive."
+  }
 }
 
 # ─────────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ Use this after `terraform apply` and during setup-time troubleshooting.
 
 - A healthy FUSE deployment reports the workspace container as healthy and `Drive mount: healthy` from `sudo agent-stack-workspace-drive status`.
 - Verify that `findmnt -M /home/<workspace_username>/workspace` inside the workspace container reports `fuse.rclone`.
+- Keep `workspace_fuse_enabled = false` when `workspace_drive_fuse_enabled = true`; Terraform rejects enabling both modes together.
 - If apply reports local residue, run `sudo agent-stack-workspace-drive recovery-dry-run`. Nothing is uploaded, moved, or deleted until the exact confirmation flag for a recovery command is supplied.
 - After `recover-copy --confirm-upload`, review the files in Drive before stopping the workspace and using `quarantine --confirm-quarantine`.
 
