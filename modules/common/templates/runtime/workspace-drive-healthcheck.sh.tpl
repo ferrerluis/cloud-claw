@@ -24,7 +24,7 @@ esac
 pgrep -x rclone >/dev/null
 timeout 5 stat "$mountpoint" >/dev/null
 
-stats="$(rclone rc --url http://127.0.0.1:5572 core/stats 2>/dev/null)"
+stats="$(timeout 5 rclone rc --url http://127.0.0.1:5572 core/stats 2>/dev/null)"
 printf '%s' "$stats" | jq -e '
   (.errors // 0) == 0 and
   (.fatalError // false) == false

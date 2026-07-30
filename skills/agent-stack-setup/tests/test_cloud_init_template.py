@@ -391,6 +391,14 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn('chown "$username:$username" "$home_dir"', self.workspace_entrypoint)
         self.assertIn("findmnt -M", self.workspace_healthcheck)
         self.assertIn("timeout 5 stat", self.workspace_healthcheck)
+        self.assertIn(
+            "timeout 5 rclone rc --url http://127.0.0.1:5572 rc/noop",
+            self.workspace_entrypoint,
+        )
+        self.assertIn(
+            "timeout 5 rclone rc --url http://127.0.0.1:5572 core/stats",
+            self.workspace_healthcheck,
+        )
 
     def test_workspace_drive_residue_requires_explicit_recovery(self) -> None:
         self.assertIn("workspace Drive deployment blocked by local residue", self.installer)

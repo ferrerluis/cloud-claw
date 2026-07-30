@@ -272,7 +272,7 @@ for attempt in $(seq 1 60); do
   fi
   if drive_is_mounted "$mountpoint" \
       && timeout 5 stat "$mountpoint" >/dev/null 2>&1 \
-      && rclone rc --url http://127.0.0.1:5572 rc/noop >/dev/null 2>&1; then
+      && timeout 5 rclone rc --url http://127.0.0.1:5572 rc/noop >/dev/null 2>&1; then
     break
   fi
   if [ "$attempt" -eq 60 ]; then
