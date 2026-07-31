@@ -430,7 +430,7 @@ class RenderTfvarsTest(unittest.TestCase):
         )
         self.assertIn('enabled_services = [\n  "openclaw",\n]', rendered)
 
-    def test_preserves_explicit_legacy_cloud_claw_values(self) -> None:
+    def test_preserves_explicit_custom_ssh_values(self) -> None:
         _, rendered = run_render(
             {
                 "cloud_provider": "aws",
@@ -441,15 +441,15 @@ class RenderTfvarsTest(unittest.TestCase):
                 "default_model": "google/gemini-3-flash-preview",
                 "fallback_models": [],
                 "project_name": "openclaw",
-                "repo_ssh_host_alias": "cloud-claw",
-                "repo_ssh_identity_file": "./.ssh/id_ed25519_cloud_claw",
-                "repo_ssh_private_key_path": ".ssh/id_ed25519_cloud_claw",
+                "repo_ssh_host_alias": "custom-host",
+                "repo_ssh_identity_file": "./.ssh/custom_identity",
+                "repo_ssh_private_key_path": ".ssh/custom_identity",
                 "tailscale_auth_key": "tskey-auth-real-value",
             }
         )
         self.assertIn('project_name = "openclaw"', rendered)
-        self.assertIn('repo_ssh_host_alias = "cloud-claw"', rendered)
-        self.assertIn('repo_ssh_private_key_path = ".ssh/id_ed25519_cloud_claw"', rendered)
+        self.assertIn('repo_ssh_host_alias = "custom-host"', rendered)
+        self.assertIn('repo_ssh_private_key_path = ".ssh/custom_identity"', rendered)
 
     def test_allows_anthropic_api_key_without_legacy_auth_key(self) -> None:
         _, rendered = run_render(

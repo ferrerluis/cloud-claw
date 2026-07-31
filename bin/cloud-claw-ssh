@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ -z "${AGENT_STACK_SSH_KEY_PATH:-}" && -z "${OPENCLAW_SSH_KEY_PATH:-}" && -f "$ROOT_DIR/.ssh/id_ed25519_cloud_claw" ]]; then
-  export AGENT_STACK_SSH_KEY_PATH="$ROOT_DIR/.ssh/id_ed25519_cloud_claw"
-fi
-exec "$ROOT_DIR/bin/agent-stack-ssh" "$@"

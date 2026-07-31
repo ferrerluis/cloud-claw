@@ -33,12 +33,10 @@ class DoctorScriptsTest(unittest.TestCase):
         self.assertIn('printf -v quoted_command "%q" "$1"', script)
         self.assertIn('"$SSH_WRAPPER" -- "sh -lc $quoted_command"', script)
 
-    def test_collect_diagnostics_checks_new_and_legacy_ssh_assets(self) -> None:
+    def test_collect_diagnostics_checks_agent_stack_ssh_assets(self) -> None:
         script = COLLECT.read_text(encoding="utf-8")
         self.assertIn("bin/agent-stack-ssh", script)
-        self.assertIn("bin/cloud-claw-ssh", script)
         self.assertIn(".ssh/id_ed25519_agent_stack", script)
-        self.assertIn(".ssh/id_ed25519_cloud_claw", script)
         self.assertIn("vpn_note", script)
         self.assertIn("vpn_nordvpn_token", script)
         self.assertIn("<redacted>", script)

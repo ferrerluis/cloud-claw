@@ -574,7 +574,6 @@ agent-stack/
 │   ├── agent-stack-ssh                 # Repo-local SSH wrapper (reads terraform outputs)
 │   ├── agent-stack-ssh-clean           # Kills stale local SSH client processes
 │   ├── agent-stack-ssh-create          # Generates repo-local SSH keypair (default: ./.ssh/id_ed25519_agent_stack)
-│   └── cloud-claw-*                    # Compatibility wrappers for old local commands
 ├── README.md                           # This file
 ├── terraform.tfvars.example            # Template — copy to terraform.tfvars
 ├── versions.tf                         # Provider version constraints

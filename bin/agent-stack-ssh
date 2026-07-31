@@ -6,10 +6,8 @@ if [[ -n "${AGENT_STACK_SSH_KEY_PATH:-}" ]]; then
   KEY_PATH="$AGENT_STACK_SSH_KEY_PATH"
 elif [[ -n "${OPENCLAW_SSH_KEY_PATH:-}" ]]; then
   KEY_PATH="$OPENCLAW_SSH_KEY_PATH"
-elif [[ -f "$ROOT_DIR/.ssh/id_ed25519_agent_stack" || ! -f "$ROOT_DIR/.ssh/id_ed25519_cloud_claw" ]]; then
-  KEY_PATH="$ROOT_DIR/.ssh/id_ed25519_agent_stack"
 else
-  KEY_PATH="$ROOT_DIR/.ssh/id_ed25519_cloud_claw"
+  KEY_PATH="$ROOT_DIR/.ssh/id_ed25519_agent_stack"
 fi
 
 usage() {
@@ -18,7 +16,7 @@ Usage: bin/agent-stack-ssh [--key <path>] [--host <user@ip>] [--] [remote-comman
 
 Defaults:
 - host is read from: terraform output -raw ssh_command
-- key is read from:  ./.ssh/id_ed25519_agent_stack, falling back to ./.ssh/id_ed25519_cloud_claw when only the legacy key exists
+- key is read from:  ./.ssh/id_ed25519_agent_stack
 EOF
 }
 

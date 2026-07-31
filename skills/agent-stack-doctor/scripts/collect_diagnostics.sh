@@ -104,13 +104,9 @@ for path in \
   outputs.tf \
   bin/agent-stack-ssh \
   bin/agent-stack-ssh-clean \
-  bin/cloud-claw-ssh \
-  bin/cloud-claw-ssh-clean \
   .ssh/config \
   .ssh/id_ed25519_agent_stack \
-  .ssh/id_ed25519_agent_stack.pub \
-  .ssh/id_ed25519_cloud_claw \
-  .ssh/id_ed25519_cloud_claw.pub
+  .ssh/id_ed25519_agent_stack.pub
 do
   file_status "$path"
 done

@@ -10,7 +10,7 @@ Use this skill for first-time setup, reconfiguration, or guided redeploys.
 Core rules:
 - Treat `variables.tf` as the schema and true-default source of truth.
 - Treat `terraform.tfvars.example` as a suggestion source only for required values that have no Terraform default and for human-friendly examples.
-- The target file is `terraform.tfvars` in the repo root. In this workspace it is `/Users/ferrerluis/Documents/GitHub/cloud-claw/terraform.tfvars`.
+- The target file is `terraform.tfvars` in the repo root. In this workspace it is `/Users/ferrerluis/Documents/GitHub/agent-stack/terraform.tfvars`.
 - Never silently accept placeholder secrets such as `YOUR_AWS_ACCESS_KEY_ID`, `sk-...`, or `tskey-auth-...`.
 - Prefer a default-first setup flow. Do not ask one question per Terraform variable when the repo already has a sensible default.
 - Keep the normal setup interview to 8 prompts or fewer. Only ask follow-up questions when the user rejects a default, a required value is missing, or the repo has a known limitation.
