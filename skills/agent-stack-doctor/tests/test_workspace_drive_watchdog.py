@@ -116,11 +116,11 @@ supervise
                 """
 mount_record_exists() { return 1; }
 if prepare_mountpoint_for_mount; then exit 1; fi
-test "$(stat -c '%a' "$MOUNTPOINT")" = "0"
 """,
                 extra_env={"WORKSPACE_DRIVE_MOUNTPOINT": str(mountpoint)},
             )
-        self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(mountpoint.stat().st_mode & 0o777, 0)
 
     def test_recovery_orders_stop_unmount_protect_and_remount(self) -> None:
         with tempfile.TemporaryDirectory() as state_dir:

@@ -4,6 +4,22 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# The persisted workspace home and host-side diagnostics bridge use UID/GID
+# 1000. Create the configured workspace user at that stable identity even when
+# the upstream Ubuntu image already reserves UID 1000 for its default user.
+RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
+  && if [ -n "$existing_user" ]; then \
+    existing_group="$(id -gn "$existing_user")"; \
+    usermod --login "${workspace_username}" --home "/home/${workspace_username}" --move-home "$existing_user"; \
+    if [ "$existing_group" != "${workspace_username}" ]; then \
+      groupmod --new-name "${workspace_username}" "$existing_group"; \
+    fi; \
+  else \
+    groupadd --gid 1000 "${workspace_username}"; \
+    useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash "${workspace_username}"; \
+  fi \
+  && usermod --groups "" "${workspace_username}"
+
 # Keep the workspace image reproducible and compatible with the Codex app server.
 # Bump deliberately when upgrading Codex.
 ARG CODEX_RELEASE=${workspace_codex_release}

@@ -400,6 +400,39 @@ class RuntimeTemplateTest(unittest.TestCase):
             self.workspace_healthcheck,
         )
 
+    def test_workspace_user_uses_stable_unprivileged_numeric_identity(self) -> None:
+        self.assertIn('getent passwd 1000', self.workspace_dockerfile)
+        self.assertIn('usermod --login "${workspace_username}"', self.workspace_dockerfile)
+        self.assertIn('groupadd --gid 1000 "${workspace_username}"', self.workspace_dockerfile)
+        self.assertIn(
+            'useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash "${workspace_username}"',
+            self.workspace_dockerfile,
+        )
+        self.assertIn('usermod --groups "" "${workspace_username}"', self.workspace_dockerfile)
+
+    def test_runtime_restart_gate_is_observable_and_rollback_build_is_complete(self) -> None:
+        restart_gate = self.installer.split("wait_agent_stack_initial_restart() {", 1)[1].split(
+            "configure_caddyfile", 1
+        )[0]
+        self.assertIn("agent-stack=$agent_state", restart_gate)
+        self.assertIn("openclaw=$openclaw_status", restart_gate)
+        self.assertIn("workspace=$workspace_status", restart_gate)
+        self.assertIn("codex=$codex_status", restart_gate)
+        self.assertIn("codex_status=ready", restart_gate)
+        self.assertIn("codex_status=not-ready", restart_gate)
+
+        image_restore = self.installer.split("restore_workspace_image() {", 1)[1].split(
+            "configure_host_tailscale() {", 1
+        )[0]
+        for required_build_input in [
+            '"$app/workspace.Dockerfile"',
+            '"$app/workspace-entrypoint.sh"',
+            '"$app/workspace-drive-healthcheck"',
+            '"$app/workspace-codex-update.sh"',
+            '"$app/workspace-codex-control.py"',
+        ]:
+            self.assertIn(required_build_input, image_restore)
+
     def test_workspace_drive_residue_requires_explicit_recovery(self) -> None:
         self.assertIn("workspace Drive deployment blocked by local residue", self.installer)
         self.assertIn("Nothing was uploaded, moved, or deleted.", self.installer)

@@ -420,7 +420,11 @@ restore_workspace_image() {
     docker tag "$image_id" agent-stack-workspace:local
     return 0
   fi
-  if [ -f "$app/workspace.Dockerfile" ]; then
+  if [ -f "$app/workspace.Dockerfile" ] \
+      && [ -f "$app/workspace-entrypoint.sh" ] \
+      && [ -f "$app/workspace-drive-healthcheck" ] \
+      && [ -f "$app/workspace-codex-update.sh" ] \
+      && [ -f "$app/workspace-codex-control.py" ]; then
     build_workspace_image
     return 0
   fi
@@ -539,33 +543,50 @@ restore_workspace_codex_auto_update_host() {
 
 wait_agent_stack_initial_restart() {
   for attempt in $(seq 1 60); do
-    if systemctl is-active --quiet agent-stack; then
+    local agent_state openclaw_status workspace_status codex_status
+    agent_state="$(systemctl is-active agent-stack 2>/dev/null || true)"
+    openclaw_status=disabled
+    workspace_status=disabled
+    codex_status=disabled
+    if [ "$agent_state" = "active" ]; then
       local all_ready=1
       local container_id health_status
       if [ "${openclaw_enabled}" = "true" ]; then
         container_id="$(docker compose -f "$app/docker-compose.yml" ps -q openclaw 2>/dev/null || true)"
         if [ -z "$container_id" ]; then
+          openclaw_status=missing
           all_ready=0
         else
           health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || true)"
+          openclaw_status="$${health_status:-unknown}"
           [ "$health_status" = "healthy" ] || all_ready=0
         fi
       fi
       if [ "${workspace_enabled}" = "true" ]; then
         container_id="$(docker compose -f "$app/docker-compose.yml" ps -q workspace 2>/dev/null || true)"
         if [ -z "$container_id" ]; then
+          workspace_status=missing
           all_ready=0
         else
           health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || true)"
+          workspace_status="$${health_status:-unknown}"
           [ "$health_status" = "healthy" ] || all_ready=0
-          if [ "${workspace_codex_auto_update_enabled}" = "true" ] && ! docker exec --user ${workspace_username} "$container_id" env HOME=/home/${workspace_username} CODEX_HOME=/home/${workspace_username}/.codex PATH=/home/${workspace_username}/.local/bin:/usr/local/bin:/usr/bin:/bin /bin/sh -c 'expected="$(readlink -f "$HOME/.codex/packages/standalone/current/codex" 2>/dev/null || true)"; actual="$(readlink -f "$HOME/.local/bin/codex" 2>/dev/null || true)"; test "$(command -v codex)" = "$HOME/.local/bin/codex" && test -n "$expected" && test "$actual" = "$expected" && codex --version >/dev/null'; then
-            all_ready=0
+          if [ "${workspace_codex_auto_update_enabled}" = "true" ]; then
+            if docker exec --user ${workspace_username} "$container_id" env HOME=/home/${workspace_username} CODEX_HOME=/home/${workspace_username}/.codex PATH=/home/${workspace_username}/.local/bin:/usr/local/bin:/usr/bin:/bin /bin/sh -c 'expected="$(readlink -f "$HOME/.codex/packages/standalone/current/codex" 2>/dev/null || true)"; actual="$(readlink -f "$HOME/.local/bin/codex" 2>/dev/null || true)"; test "$(command -v codex)" = "$HOME/.local/bin/codex" && test -n "$expected" && test "$actual" = "$expected" && codex --version >/dev/null'; then
+              codex_status=ready
+            else
+              codex_status=not-ready
+              all_ready=0
+            fi
           fi
         fi
       fi
       if [ "$all_ready" -eq 1 ]; then
         return 0
       fi
+    fi
+    if [ "$attempt" -eq 1 ] || [ $((attempt % 10)) -eq 0 ]; then
+      echo "[runtime] readiness attempt $attempt/60: agent-stack=$agent_state openclaw=$openclaw_status workspace=$workspace_status codex=$codex_status" >&2
     fi
     sleep 3
   done
