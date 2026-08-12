@@ -1,12 +1,6 @@
 WORKSPACE_USERNAME=${workspace_username}
 WORKSPACE_PASSWORD=${workspace_password}
 WORKSPACE_AUTHORIZED_KEYS_BASE64=${workspace_ssh_public_keys_base64}
-WORKSPACE_FUSE_ENABLED=${workspace_fuse_enabled}
 WORKSPACE_CODEX_AUTO_UPDATE_ENABLED=${workspace_codex_auto_update_enabled}
 WORKSPACE_CODEX_AUTO_RECOVER_INTERRUPTED_TURNS=${workspace_codex_auto_recover_interrupted_turns}
 CODEX_HOME=/home/${workspace_username}/.codex
-WORKSPACE_DRIVE_FUSE_ENABLED=${workspace_drive_fuse_enabled}
-WORKSPACE_DRIVE_REMOTE_BASE64=${workspace_drive_remote_base64}
-WORKSPACE_DRIVE_CONFIG=/etc/rclone/rclone.conf
-WORKSPACE_DRIVE_VFS_CACHE_MAX_SIZE=${workspace_drive_vfs_cache_max_size}
-WORKSPACE_DRIVE_VFS_CACHE_MIN_FREE_SPACE=${workspace_drive_vfs_cache_min_free_space}

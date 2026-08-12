@@ -444,13 +444,6 @@ locals {
     workspace_ssh_host_port                        = var.workspace_ssh_host_port
     workspace_ssh_host                             = trimspace(var.workspace_ssh_host_override) != "" ? trimspace(var.workspace_ssh_host_override) : var.project_name
     workspace_ssh_public_keys_base64               = base64encode(join("\n", [for key in var.workspace_ssh_public_keys : trimspace(key)]))
-    workspace_fuse_enabled                         = var.workspace_fuse_enabled
-    workspace_drive_fuse_enabled                   = var.workspace_drive_fuse_enabled
-    workspace_drive_remote                         = trimspace(var.workspace_drive_remote)
-    workspace_drive_remote_base64                  = base64encode(trimspace(var.workspace_drive_remote))
-    workspace_drive_remote_name                    = split(":", trimspace(var.workspace_drive_remote))[0]
-    workspace_drive_vfs_cache_max_size             = trimspace(var.workspace_drive_vfs_cache_max_size)
-    workspace_drive_vfs_cache_min_free_space       = trimspace(var.workspace_drive_vfs_cache_min_free_space)
     vpn_enabled                                    = var.vpn_enabled
     vpn_provider                                   = var.vpn_provider
     vpn_nordvpn_connect_target                     = var.vpn_nordvpn_connect_target
@@ -471,8 +464,7 @@ locals {
   runtime_host_tailscale          = templatefile("${path.module}/modules/common/templates/runtime/host-tailscale-bootstrap.sh.tpl", local.runtime_template_vars)
   runtime_workspace_dockerfile    = templatefile("${path.module}/modules/common/templates/runtime/workspace.Dockerfile.tpl", local.runtime_template_vars)
   runtime_workspace_entrypoint    = templatefile("${path.module}/modules/common/templates/runtime/workspace-entrypoint.sh.tpl", local.runtime_template_vars)
-  runtime_workspace_healthcheck   = templatefile("${path.module}/modules/common/templates/runtime/workspace-drive-healthcheck.sh.tpl", local.runtime_template_vars)
-  runtime_workspace_drive_helper  = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-workspace-drive.sh.tpl", local.runtime_template_vars)
+  runtime_workspace_drive_skill   = file("${path.module}/skills/para-memory-drive/SKILL.md")
   runtime_workspace_codex_update  = templatefile("${path.module}/modules/common/templates/runtime/workspace-codex-update.sh.tpl", local.runtime_template_vars)
   runtime_workspace_codex_control = templatefile("${path.module}/modules/common/templates/runtime/workspace-codex-control.py.tpl", local.runtime_template_vars)
   runtime_workspace_update_host   = templatefile("${path.module}/modules/common/templates/runtime/agent-stack-workspace-codex-update.sh.tpl", local.runtime_template_vars)
@@ -506,8 +498,7 @@ locals {
     nonsensitive(local.runtime_host_tailscale),
     nonsensitive(local.runtime_workspace_dockerfile),
     nonsensitive(local.runtime_workspace_entrypoint),
-    nonsensitive(local.runtime_workspace_healthcheck),
-    nonsensitive(local.runtime_workspace_drive_helper),
+    nonsensitive(local.runtime_workspace_drive_skill),
     nonsensitive(local.runtime_workspace_codex_update),
     nonsensitive(local.runtime_workspace_codex_control),
     nonsensitive(local.runtime_workspace_update_host),
@@ -533,7 +524,6 @@ locals {
     nonsensitive(local.runtime_starter_tools),
     nonsensitive(local.runtime_starter_user),
     nonsensitive(var.openai_codex_auth_json_base64),
-    nonsensitive(var.workspace_drive_rclone_config_base64),
   ])))
   runtime_staging_dir = "/opt/agent-stack/.staging-${substr(local.runtime_artifact_checksum, 0, 16)}"
 }
@@ -614,18 +604,8 @@ resource "terraform_data" "runtime_apply" {
   }
 
   provisioner "file" {
-    content     = local.runtime_workspace_healthcheck
-    destination = "${local.runtime_staging_dir}/workspace-drive-healthcheck"
-  }
-
-  provisioner "file" {
-    content     = local.runtime_workspace_drive_helper
-    destination = "${local.runtime_staging_dir}/agent-stack-workspace-drive"
-  }
-
-  provisioner "file" {
-    content     = var.workspace_drive_rclone_config_base64
-    destination = "${local.runtime_staging_dir}/workspace-rclone.conf.base64"
+    content     = local.runtime_workspace_drive_skill
+    destination = "${local.runtime_staging_dir}/workspace-para-memory-drive-skill.md"
   }
 
   provisioner "file" {
@@ -756,8 +736,8 @@ resource "terraform_data" "runtime_apply" {
   provisioner "remote-exec" {
     inline = [
       "chmod 0700 ${local.runtime_staging_dir}",
-      "chmod 0600 ${local.runtime_staging_dir}/.env ${local.runtime_staging_dir}/workspace.env ${local.runtime_staging_dir}/openai_codex_auth_json_base64 ${local.runtime_staging_dir}/workspace-rclone.conf.base64 ${local.runtime_staging_dir}/vpn-auth.txt ${local.runtime_staging_dir}/vpn-token.txt",
-      "chmod 0755 ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir}/agent-stack-migrate-layout ${local.runtime_staging_dir}/mount-agent-stack-volume.sh ${local.runtime_staging_dir}/tailscale-bootstrap.sh ${local.runtime_staging_dir}/host-tailscale-bootstrap.sh ${local.runtime_staging_dir}/workspace-entrypoint.sh ${local.runtime_staging_dir}/workspace-drive-healthcheck ${local.runtime_staging_dir}/agent-stack-workspace-drive ${local.runtime_staging_dir}/agent-stack-vpn ${local.runtime_staging_dir}/agent-stack-vpn-openvpn ${local.runtime_staging_dir}/agent-stack-diagnostics ${local.runtime_staging_dir}/agent-stack-diagnostics-ssh ${local.runtime_staging_dir}/agent-stack-tailscale-watchdog ${local.runtime_staging_dir}/agent-stack-workspace-codex-update",
+      "chmod 0600 ${local.runtime_staging_dir}/.env ${local.runtime_staging_dir}/workspace.env ${local.runtime_staging_dir}/openai_codex_auth_json_base64 ${local.runtime_staging_dir}/vpn-auth.txt ${local.runtime_staging_dir}/vpn-token.txt",
+      "chmod 0755 ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir}/agent-stack-migrate-layout ${local.runtime_staging_dir}/mount-agent-stack-volume.sh ${local.runtime_staging_dir}/tailscale-bootstrap.sh ${local.runtime_staging_dir}/host-tailscale-bootstrap.sh ${local.runtime_staging_dir}/workspace-entrypoint.sh ${local.runtime_staging_dir}/agent-stack-vpn ${local.runtime_staging_dir}/agent-stack-vpn-openvpn ${local.runtime_staging_dir}/agent-stack-diagnostics ${local.runtime_staging_dir}/agent-stack-diagnostics-ssh ${local.runtime_staging_dir}/agent-stack-tailscale-watchdog ${local.runtime_staging_dir}/agent-stack-workspace-codex-update",
       "chmod 0755 ${local.runtime_staging_dir}/workspace-codex-update.sh",
       "chmod 0755 ${local.runtime_staging_dir}/workspace-codex-control.py",
       "sudo bash ${local.runtime_staging_dir}/install-agent-stack.sh ${local.runtime_staging_dir} ${local.runtime_artifact_checksum}",

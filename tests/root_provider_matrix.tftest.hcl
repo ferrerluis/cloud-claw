@@ -57,7 +57,6 @@ variables {
   workspace_codex_auto_update_timezone           = "America/New_York"
   workspace_codex_auto_update_time               = "04:00"
   workspace_codex_auto_recover_interrupted_turns = false
-  workspace_fuse_enabled                         = false
   vpn_enabled                                    = false
   vpn_provider                                   = "nordvpn_openvpn"
   vpn_nordvpn_token                              = ""

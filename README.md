@@ -287,43 +287,13 @@ workspace_ssh_host_port = 2222
 workspace_ssh_public_keys = [
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExamplePublicKeyOnly user@example.com",
 ]
-workspace_fuse_enabled = false
 tailscale_enabled       = true
 tailscale_mode          = "host"
 ```
 
-The workspace image is Ubuntu-based, installs OpenSSH, rclone, FUSE tooling, Python 3, `pip`, `venv`, and the Codex standalone installer, persists `/home/<workspace_username>` at `/opt/agent-stack/data/workspace/home`, and exposes SSH through the host at `workspace_ssh_host_port`. The configured workspace username always uses UID/GID 1000 with no supplementary groups so the host-backed home and diagnostics bridge retain a stable numeric identity across Ubuntu base-image changes. It installs no third-party Python packages during image build. For workspace-specific Python tools, create an isolated user virtual environment, for example `python3 -m venv ~/.venvs/tooling`, then use `~/.venvs/tooling/bin/pip` rather than modifying the system Python.
+The workspace image is Ubuntu-based, installs OpenSSH, Python 3, `pip`, `venv`, and the Codex standalone installer, persists `/home/<workspace_username>` at `/opt/agent-stack/data/workspace/home`, and exposes SSH through the host at `workspace_ssh_host_port`. The configured workspace username always uses UID/GID 1000 with no supplementary groups so the host-backed home and diagnostics bridge retain a stable numeric identity across Ubuntu base-image changes. It includes no rclone, FUSE packages, privileged FUSE device, or Drive OAuth configuration. At startup it copies the bundled `para-memory-drive` skill to `~/.agents/skills/para-memory-drive/SKILL.md` and maintains a bounded block in `~/AGENTS.md` directing agents to use the connected Drive capability. Google Drive is the knowledge source of truth; it is not a local filesystem in the workspace.
 
-`workspace_codex_release` remains the exact reproducible image fallback. When live updates are enabled, it must be a stable `x.y.z` version. Set `workspace_codex_auto_update_enabled = true` only after the first approved workspace rollout. The updater runs the official [`codex update`](https://learn.chatgpt.com/docs/developer-commands#codex-update) command once per day at `workspace_codex_auto_update_time` in `workspace_codex_auto_update_timezone` (defaults: `04:00 America/New_York`). It is a non-catch-up hard cutover: it does not run at workspace startup, does not wait for idle work, and does not poll workspace processes. It retries only pre-restart technical failures at +5, +15, and +35 minutes after the configured cutover (04:05, 04:15, and 04:35 with the defaults). It restarts the app server only when a new CLI release was installed, so active Codex work can be interrupted. Before doing so, it requires Codex's canonical managed daemon and refuses an unmanaged app server or a competing legacy hourly updater rather than taking either one over.
-
-Keep `workspace_codex_auto_recover_interrupted_turns = false` for that first approved rollout. Run the root-admin-only disposable-thread visual E2E probe in the desktop client first; only a second targeted approved apply may enable recovery. When enabled, recovery creates exactly one deduplicated, safety-constrained new turn only for a proven interrupted turn. It never replays the prior prompt or commands and cannot restore an in-flight turn. A turn created after the app-server snapshot and before the restart can be missed entirely. A failed update or daemon verification restores the previous CLI target and leaves SSH available. On first enabled startup, a recognized prior user-local standalone Codex symlink is backed up and repointed at the canonical user-scoped installation; an unrelated user executable is never overwritten. You can inspect the effective command with `agent-stack-diagnostics codex-update status` or queue immediate hard maintenance with `agent-stack-diagnostics codex-update`; the immediate command uses the same retry, rollback, and recovery policy. The workspace user gets neither Docker nor sudo: the queue command is a forced host-side operation, not a shell. AgentStack does not open that port in cloud firewall rules; access is intended through the host's Tailscale address. `workspace_ssh_public_keys` accepts public key strings only; local private key paths, 1Password agent socket paths, and other client-side SSH details stay on each operator's machine. Set `workspace_fuse_enabled = true` only when the workspace needs user-space mounts such as `rclone mount`; it exposes `/dev/fuse`, grants `SYS_ADMIN`, and disables AppArmor confinement for that container.
-
-To make `~/workspace` the Google Drive filesystem itself, enable the managed rclone FUSE mount:
-
-```hcl
-workspace_drive_fuse_enabled           = true
-workspace_drive_remote                 = "workspace-drive:"
-workspace_drive_rclone_config_base64   = "<base64 of the complete rclone.conf>"
-workspace_drive_vfs_cache_max_size     = "10G"
-workspace_drive_vfs_cache_min_free_space = "2G"
-```
-
-Configure the named rclone remote locally with `type = drive` and a custom Google OAuth `client_id` and `client_secret`; rclone's shared OAuth client is intentionally rejected. Encode the complete config without line wrapping, for example `base64 -w0 ~/.config/rclone/rclone.conf` on GNU systems. The sensitive payload is copied to the host with mode `0600`, but it is also stored in Terraform state, so the state backend must be protected as a secret.
-
-With FUSE enabled, rclone `1.74.4` runs in the workspace container in the foreground with full VFS caching. SSH starts only after `/home/<workspace_username>/workspace` is verified as a live FUSE mount. If rclone exits, the mount stops responding, or `/dev/fuse` is missing, the container becomes unhealthy and terminates instead of accepting writes into a local fallback directory.
-
-Deployment also fails if local files already exist beneath the mountpoint. AgentStack never uploads, moves, merges, or deletes those files automatically. Inspect and recover them explicitly on the host:
-
-```bash
-sudo agent-stack-workspace-drive doctor
-sudo agent-stack-workspace-drive recovery-dry-run
-sudo agent-stack-workspace-drive recover-copy --confirm-upload
-# After independently reviewing the uploaded files in Drive:
-sudo docker compose -f /opt/agent-stack/docker-compose.yml stop workspace
-sudo agent-stack-workspace-drive quarantine --confirm-quarantine
-```
-
-`recover-copy` copies the complete tree with no filters and verifies that all local files exist remotely with the same size. `quarantine` is a separate, recoverable move and is never invoked automatically.
+`workspace_codex_release` remains the exact reproducible image fallback. When live updates are enabled, it must be a stable `x.y.z` version. Set `workspace_codex_auto_update_enabled = true` only after the first approved workspace rollout. The updater runs the official [`codex update`](https://learn.chatgpt.com/docs/developer-commands#codex-update) command once per day at `workspace_codex_auto_update_time` in `workspace_codex_auto_update_timezone` (defaults: `04:00 America/New_York`). It is a non-catch-up hard cutover: it does not run at workspace startup, does not wait for idle work, and does not poll workspace processes. It restarts the app server only when a new CLI release was installed, so active Codex work can be interrupted.
 
 n8n uses local Postgres by default:
 
@@ -468,12 +438,6 @@ A VPN changes egress IP and DNS path; it does not guarantee that Google, Indeed,
 | `workspace_password` | `""` | Sensitive password for workspace SSH; required when `workspace` is enabled |
 | `workspace_ssh_host_port` | `2222` | Host port mapped to workspace SSH; do not open in provider firewalls |
 | `workspace_ssh_public_keys` | `[]` | OpenSSH public keys authorized for the workspace user |
-| `workspace_drive_fuse_enabled` | `false` | Mount Google Drive directly at the workspace user's `~/workspace` and fail closed when unavailable |
-| `workspace_drive_remote` | `"workspace-drive:"` | rclone Drive remote and optional path mounted as `~/workspace` |
-| `workspace_drive_rclone_config_base64` | `""` | Sensitive base64 rclone config; a custom Google OAuth client is required |
-| `workspace_drive_vfs_cache_max_size` | `"10G"` | Maximum local disk used by rclone's full VFS cache |
-| `workspace_drive_vfs_cache_min_free_space` | `"2G"` | Free disk space preserved by rclone's VFS cache |
-| `workspace_fuse_enabled` | `false` | Expose `/dev/fuse` to the workspace for user-space mounts such as `rclone mount`; grants the workspace container `SYS_ADMIN` |
 | `vpn_enabled` | `false` | Install and start host OpenVPN before the Docker stack |
 | `vpn_provider` | `"nordvpn_openvpn"` | VPN integration; v1 supports NordVPN manual OpenVPN |
 | `vpn_nordvpn_token` | `""` | Sensitive non-expiring access token required only by NordLynx |
@@ -526,8 +490,6 @@ A VPN changes egress IP and DNS path; it does not guarantee that Google, Indeed,
 | `dashboard_url_with_token_import` | First-time URL that auto-imports token into Control UI |
 | `workspace_ssh_command` | SSH command for the optional workspace container |
 | `workspace_codex_login_command` | Device-auth command for Codex inside the optional workspace |
-| `workspace_drive_status_command` | Host command that verifies the workspace Drive FUSE mount |
-| `workspace_drive_recovery_command` | Read-only preview for recovering files found beneath the FUSE mountpoint |
 | `workspace_note` | Workspace access and safety notes |
 | `vpn_note` | Host VPN status and diagnostics hint |
 | `openclaw_url` | OpenClaw UI URL or access hint |
@@ -574,6 +536,7 @@ agent-stack/
 │   ├── agent-stack-ssh                 # Repo-local SSH wrapper (reads terraform outputs)
 │   ├── agent-stack-ssh-clean           # Kills stale local SSH client processes
 │   ├── agent-stack-ssh-create          # Generates repo-local SSH keypair (default: ./.ssh/id_ed25519_agent_stack)
+│   └── cloud-claw-*                    # Compatibility wrappers for old local commands
 ├── README.md                           # This file
 ├── terraform.tfvars.example            # Template — copy to terraform.tfvars
 ├── versions.tf                         # Provider version constraints
@@ -637,13 +600,9 @@ hcloud volume create-snapshot <volume-id> --description "agent-stack-$(date +%Y%
 
 ---
 
-## Google Drive workspace FUSE (optional)
+## Google Drive workspace skill
 
-Google Drive integration is managed through the `workspace_drive_*` Terraform variables described in the workspace section above. It mounts the remote directly at the workspace user's `~/workspace`; there is no second local working tree and no periodic sidecar sync. Do not hand-edit the installed Compose file or run a separate rclone daemon, because those changes bypass Terraform validation, mount supervision, and residue recovery safeguards.
-
-For a different user-managed FUSE mount, enable `workspace_fuse_enabled = true`. Never enable it together with `workspace_drive_fuse_enabled`. It exposes `/dev/fuse`, grants `SYS_ADMIN`, and disables AppArmor confinement for the workspace container; verify it with `agent-stack-diagnostics inspect workspace`.
-
-Legacy containers that already mounted Drive through `workspace_fuse_enabled` can use `skills/agent-stack-doctor/scripts/workspace_drive_mount_watchdog.sh` as a transitional repair. Install it as the workspace user's `~/.local/bin/workspace-drive-mount` and install the adjacent shell guard as `~/.config/rclone/workspace-drive-guard.sh`. The helper supervises foreground rclone, clears stale FUSE endpoints, and blocks accidental local fallback writes, but it is not the deployment model for new stacks and cannot provide the managed mode's root-owned fail-closed mountpoint.
+AgentStack uses the versioned [`para-memory-drive` skill](skills/para-memory-drive/SKILL.md) for Google Drive-hosted PARA knowledge. The workspace copies it to `~/.agents/skills/para-memory-drive/SKILL.md` and writes a managed `~/AGENTS.md` instruction block. Use the agent's connected Drive capability to search, read, and edit knowledge artifacts; Drive is authoritative and no Drive filesystem is mounted.
 
 ---
 

@@ -57,7 +57,6 @@ variables {
   workspace_codex_auto_update_timezone           = "America/New_York"
   workspace_codex_auto_update_time               = "04:00"
   workspace_codex_auto_recover_interrupted_turns = false
-  workspace_fuse_enabled                         = false
   vpn_enabled                                    = false
   vpn_provider                                   = "nordvpn_openvpn"
   vpn_nordvpn_token                              = ""
@@ -117,8 +116,6 @@ run "workspace_host_outputs" {
     workspace_codex_auto_update_timezone           = "America/New_York"
     workspace_codex_auto_update_time               = "04:00"
     workspace_codex_auto_recover_interrupted_turns = false
-    workspace_drive_fuse_enabled                   = true
-    workspace_drive_rclone_config_base64           = "W3dvcmtzcGFjZS1kcml2ZV0KdHlwZSA9IGRyaXZlCmNsaWVudF9pZCA9IHRlc3QtY2xpZW50CmNsaWVudF9zZWNyZXQgPSB0ZXN0LXNlY3JldAp0b2tlbiA9IHt9Cg=="
     tailscale_mode                                 = "host"
   }
 
@@ -148,18 +145,8 @@ run "workspace_host_outputs" {
   }
 
   assert {
-    condition     = strcontains(output.workspace_note, "fail-closed Google Drive FUSE mount")
-    error_message = "Workspace note should identify the FUSE mount as fail closed."
-  }
-
-  assert {
-    condition     = strcontains(output.workspace_drive_status_command, "agent-stack-workspace-drive doctor")
-    error_message = "Drive-enabled workspaces should expose the host-side doctor command."
-  }
-
-  assert {
-    condition     = strcontains(output.workspace_drive_recovery_command, "recovery-dry-run")
-    error_message = "Drive-enabled workspaces should expose only the read-only recovery preview by default."
+    condition     = strcontains(output.workspace_note, "para-memory-drive/SKILL.md") && strcontains(output.workspace_note, "No Drive filesystem is mounted")
+    error_message = "Workspace note should direct agents to the Drive skill without exposing a filesystem mount."
   }
 
   assert {

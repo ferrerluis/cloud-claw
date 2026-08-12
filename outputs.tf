@@ -114,22 +114,12 @@ output "workspace_codex_login_command" {
   value       = local.workspace_enabled ? "ssh -p ${var.workspace_ssh_host_port} ${var.workspace_username}@${local.workspace_ssh_host} 'codex login --device-auth'" : "disabled"
 }
 
-output "workspace_drive_status_command" {
-  description = "Inspect the optional workspace Google Drive FUSE mount without exposing credentials."
-  value       = local.workspace_enabled && var.workspace_drive_fuse_enabled ? "ssh ${var.admin_username}@${local.instance_public_ip} 'sudo agent-stack-workspace-drive doctor'" : "disabled"
-}
-
-output "workspace_drive_recovery_command" {
-  description = "Preview recovery of local files found beneath the workspace FUSE mountpoint. This command never uploads or moves files."
-  value       = local.workspace_enabled && var.workspace_drive_fuse_enabled ? "ssh ${var.admin_username}@${local.instance_public_ip} 'sudo agent-stack-workspace-drive recovery-dry-run'" : "disabled"
-}
-
 output "workspace_note" {
   description = "Workspace access notes."
   value = local.workspace_enabled ? (
     var.tailscale_enabled && var.tailscale_mode == "host"
-    ? "Workspace is enabled. Connect over the tailnet with workspace_ssh_command, then run workspace_codex_login_command. Password auth is enabled only inside the workspace container; no Docker socket is mounted.${var.workspace_drive_fuse_enabled ? " ~/workspace is the fail-closed Google Drive FUSE mount; use workspace_drive_status_command to verify it." : ""}${var.workspace_codex_auto_update_enabled ? " Root-managed stable Codex maintenance runs daily at ${var.workspace_codex_auto_update_time} ${var.workspace_codex_auto_update_timezone}; a new CLI release can interrupt active work when the app server restarts. Use agent-stack-diagnostics codex-update status to inspect it.${var.workspace_codex_auto_recover_interrupted_turns ? " Proven interrupted turns receive one safety-constrained recovery prompt." : " Automatic interrupted-turn recovery is disabled."}" : ""}${var.workspace_fuse_enabled ? " FUSE is enabled for user-space mounts such as rclone mount." : ""}"
-    : "Workspace is enabled, but the intended supported access path is tailscale_enabled=true with tailscale_mode=\"host\".${var.workspace_codex_auto_update_enabled ? " Root-managed stable Codex maintenance runs daily at ${var.workspace_codex_auto_update_time} ${var.workspace_codex_auto_update_timezone}; a new CLI release can interrupt active work when the app server restarts. Use agent-stack-diagnostics codex-update status to inspect it.${var.workspace_codex_auto_recover_interrupted_turns ? " Proven interrupted turns receive one safety-constrained recovery prompt." : " Automatic interrupted-turn recovery is disabled."}" : ""}${var.workspace_fuse_enabled ? " FUSE is enabled for user-space mounts such as rclone mount." : ""}"
+    ? "Workspace is enabled. Connect over the tailnet with workspace_ssh_command, then run workspace_codex_login_command. Password auth is enabled only inside the workspace container; no Docker socket is mounted. No Drive filesystem is mounted. Use ~/.agents/skills/para-memory-drive/SKILL.md with the connected Drive capability for PARA knowledge.${var.workspace_codex_auto_update_enabled ? " Root-managed stable Codex maintenance runs daily at ${var.workspace_codex_auto_update_time} ${var.workspace_codex_auto_update_timezone}; a new CLI release can interrupt active work when the app server restarts. Use agent-stack-diagnostics codex-update status to inspect it.${var.workspace_codex_auto_recover_interrupted_turns ? " Proven interrupted turns receive one safety-constrained recovery prompt." : " Automatic interrupted-turn recovery is disabled."}" : ""}"
+    : "Workspace is enabled, but the intended supported access path is tailscale_enabled=true with tailscale_mode=\"host\". No Drive filesystem is mounted; use ~/.agents/skills/para-memory-drive/SKILL.md with the connected Drive capability for PARA knowledge.${var.workspace_codex_auto_update_enabled ? " Root-managed stable Codex maintenance runs daily at ${var.workspace_codex_auto_update_time} ${var.workspace_codex_auto_update_timezone}; a new CLI release can interrupt active work when the app server restarts. Use agent-stack-diagnostics codex-update status to inspect it.${var.workspace_codex_auto_recover_interrupted_turns ? " Proven interrupted turns receive one safety-constrained recovery prompt." : " Automatic interrupted-turn recovery is disabled."}" : ""}"
   ) : "disabled"
 }
 

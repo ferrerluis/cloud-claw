@@ -58,6 +58,7 @@ copy_worktree() {
           continue
           ;;
       esac
+      [ -f "$path" ] || continue
       mkdir -p "$TEST_REPO/$(dirname "$path")"
       cp -p "$path" "$TEST_REPO/$path"
     done
@@ -89,12 +90,8 @@ run_phase "runtime shell syntax" bash -n \
   "$TEST_REPO/modules/common/templates/runtime/workspace-codex-update.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-workspace-codex-update.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/workspace-entrypoint.sh.tpl" \
-  "$TEST_REPO/modules/common/templates/runtime/workspace-drive-healthcheck.sh.tpl" \
-  "$TEST_REPO/modules/common/templates/runtime/agent-stack-workspace-drive.sh.tpl" \
   "$TEST_REPO/modules/common/templates/runtime/agent-stack-diagnostics.sh.tpl" \
-  "$TEST_REPO/modules/common/templates/runtime/agent-stack-diagnostics-ssh.sh.tpl" \
-  "$TEST_REPO/skills/agent-stack-doctor/scripts/workspace_drive_mount_watchdog.sh" \
-  "$TEST_REPO/skills/agent-stack-doctor/scripts/workspace_drive_shell_guard.sh" || true
+  "$TEST_REPO/modules/common/templates/runtime/agent-stack-diagnostics-ssh.sh.tpl" || true
 run_phase "workspace Codex control Python syntax" python3 -c \
   'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))' \
   "$TEST_REPO/modules/common/templates/runtime/workspace-codex-control.py.tpl" || true

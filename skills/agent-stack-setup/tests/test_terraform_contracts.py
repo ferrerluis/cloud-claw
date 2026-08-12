@@ -105,10 +105,6 @@ class TerraformContractTest(unittest.TestCase):
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_host_port"), "2222")
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_host_override"), '""')
         self.assertEqual(variable_default(self.variables_tf, "workspace_ssh_public_keys"), "[]")
-        self.assertEqual(variable_default(self.variables_tf, "workspace_drive_fuse_enabled"), "false")
-        self.assertEqual(variable_default(self.variables_tf, "workspace_drive_remote"), '"workspace-drive:"')
-        self.assertEqual(variable_default(self.variables_tf, "workspace_drive_vfs_cache_max_size"), '"10G"')
-        self.assertEqual(variable_default(self.variables_tf, "workspace_fuse_enabled"), "false")
         self.assertEqual(variable_default(self.variables_tf, "vpn_enabled"), "false")
         self.assertEqual(variable_default(self.variables_tf, "vpn_provider"), '"nordvpn_openvpn"')
         self.assertEqual(variable_default(self.variables_tf, "vpn_nordvpn_token"), '""')
@@ -131,7 +127,6 @@ class TerraformContractTest(unittest.TestCase):
         enabled_services = extract_named_block(self.variables_tf, "variable", "enabled_services")
         workspace_password = extract_named_block(self.variables_tf, "variable", "workspace_password")
         workspace_ssh_public_keys = extract_named_block(self.variables_tf, "variable", "workspace_ssh_public_keys")
-        workspace_fuse_enabled = extract_named_block(self.variables_tf, "variable", "workspace_fuse_enabled")
         workspace_codex_release = extract_named_block(self.variables_tf, "variable", "workspace_codex_release")
         workspace_codex_auto_update_enabled = extract_named_block(
             self.variables_tf, "variable", "workspace_codex_auto_update_enabled"
@@ -182,15 +177,15 @@ class TerraformContractTest(unittest.TestCase):
         self.assertIn("sensitive   = true", workspace_password)
         self.assertIn("must be OpenSSH public key strings", workspace_ssh_public_keys)
         self.assertNotIn("sensitive   = true", workspace_ssh_public_keys)
-        self.assertIn("default     = false", workspace_fuse_enabled)
-        self.assertIn("SYS_ADMIN", workspace_fuse_enabled)
-        self.assertIn('enabled_services to include \\"workspace\\"', workspace_fuse_enabled)
-
-        drive_enabled = extract_named_block(self.variables_tf, "variable", "workspace_drive_fuse_enabled")
-        drive_config = extract_named_block(self.variables_tf, "variable", "workspace_drive_rclone_config_base64")
-        self.assertIn("requires enabled_services to include workspace", drive_enabled)
-        self.assertIn("sensitive   = true", drive_config)
-        self.assertIn("base64decode", drive_config)
+        self.assertNotIn("sensitive   = true", workspace_ssh_public_keys)
+        for retired in [
+            "workspace_fuse_enabled",
+            "workspace_drive_fuse_enabled",
+            "workspace_drive_remote",
+            "workspace_drive_rclone_config_base64",
+            "workspace_drive_vfs_cache",
+        ]:
+            self.assertNotIn(retired, self.variables_tf)
 
     def test_host_vpn_contract_is_disabled_by_default_and_sensitive(self) -> None:
         vpn_enabled = extract_named_block(self.variables_tf, "variable", "vpn_enabled")

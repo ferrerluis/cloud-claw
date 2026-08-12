@@ -24,7 +24,7 @@ If Terraform outputs are missing or stale, stop and diagnose the local deploymen
 - Check `http://127.0.0.1:18789/healthz` on the VM.
 - Check Hermes on `http://127.0.0.1:9119` and n8n on `http://127.0.0.1:5678/healthz` when enabled.
 - Inspect recent container logs and restart counts.
-- For workspace Drive, require both the expected `fuse.rclone` source and a timeout-bounded `stat`; a `findmnt` record alone can be stale. Use `sudo agent-stack-workspace-drive doctor` for managed mode or `workspace-drive-mount doctor` only for the tracked legacy repair helper.
+- For workspace knowledge access, verify `~/.agents/skills/para-memory-drive/SKILL.md` exists and that `~/AGENTS.md` directs agents to the connected Drive capability. Drive is authoritative; a missing local `~/workspace` directory is not a fault.
 
 ## 4. Tailscale, domains, and UI access
 

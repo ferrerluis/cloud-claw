@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import base64
 import os
+import pwd
 import shutil
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -63,8 +64,6 @@ class RuntimeTemplateTest(unittest.TestCase):
         cls.vpn_openvpn = (RUNTIME_DIR / "agent-stack-vpn-openvpn.sh.tpl").read_text(encoding="utf-8")
         cls.workspace_dockerfile = (RUNTIME_DIR / "workspace.Dockerfile.tpl").read_text(encoding="utf-8")
         cls.workspace_entrypoint = (RUNTIME_DIR / "workspace-entrypoint.sh.tpl").read_text(encoding="utf-8")
-        cls.workspace_healthcheck = (RUNTIME_DIR / "workspace-drive-healthcheck.sh.tpl").read_text(encoding="utf-8")
-        cls.workspace_drive_helper = (RUNTIME_DIR / "agent-stack-workspace-drive.sh.tpl").read_text(encoding="utf-8")
         cls.workspace_env = (RUNTIME_DIR / "workspace.env.tpl").read_text(encoding="utf-8")
         cls.workspace_codex_update = (RUNTIME_DIR / "workspace-codex-update.sh.tpl").read_text(encoding="utf-8")
         cls.workspace_codex_control = (RUNTIME_DIR / "workspace-codex-control.py.tpl").read_text(encoding="utf-8")
@@ -110,10 +109,9 @@ class RuntimeTemplateTest(unittest.TestCase):
         )
         self.assertIn("${workspace_username}@${workspace_ssh_host}", self.installer)
         self.assertIn("host.docker.internal:host-gateway", self.compose)
-        self.assertIn("%{ if workspace_drive_fuse_enabled || workspace_fuse_enabled }", self.compose)
-        self.assertIn("/dev/fuse:/dev/fuse", self.compose)
-        self.assertIn("SYS_ADMIN", self.compose)
-        self.assertIn("apparmor:unconfined", self.compose)
+        self.assertNotIn("/dev/fuse", self.compose)
+        self.assertNotIn("SYS_ADMIN", self.compose)
+        self.assertNotIn("apparmor:unconfined", self.compose)
         self.assertNotIn("/var/run/docker.sock", self.compose)
 
     def test_caddy_protects_ui_and_allows_webhooks(self) -> None:
@@ -171,7 +169,7 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("chmod 0600 ${local.runtime_staging_dir}/.env", main_tf)
         self.assertIn("${local.runtime_staging_dir}/workspace.env", main_tf)
         self.assertIn("${local.runtime_staging_dir}/openai_codex_auth_json_base64", main_tf)
-        self.assertIn("${local.runtime_staging_dir}/workspace-rclone.conf.base64", main_tf)
+        self.assertIn("${local.runtime_staging_dir}/workspace-para-memory-drive-skill.md", main_tf)
         self.assertIn("${local.runtime_staging_dir}/vpn-auth.txt", main_tf)
         self.assertIn("${local.runtime_staging_dir}/vpn-token.txt", main_tf)
 
@@ -227,7 +225,6 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("OnBootSec", watchdog_timer)
 
     def test_workspace_image_installs_codex_and_ssh_tools(self) -> None:
-        self.assertIn("FROM rclone/rclone:1.74.4 AS rclone", self.workspace_dockerfile)
         self.assertIn("FROM ubuntu:24.04", self.workspace_dockerfile)
         for package in [
             "openssh-server",
@@ -235,8 +232,6 @@ class RuntimeTemplateTest(unittest.TestCase):
             "curl",
             "jq",
             "bubblewrap",
-            "fuse3",
-            "rclone",
             "util-linux",
             "python3",
             "python3-pip",
@@ -244,6 +239,9 @@ class RuntimeTemplateTest(unittest.TestCase):
             "tini",
         ]:
             self.assertIn(package, self.workspace_dockerfile)
+        for removed in ["rclone", "fuse3", "/dev/fuse", "SYS_ADMIN"]:
+            self.assertNotIn(removed, self.workspace_dockerfile)
+        self.assertIn("para-memory-drive/SKILL.md", self.workspace_dockerfile)
         self.assertIn("https://chatgpt.com/codex/install.sh", self.workspace_dockerfile)
         self.assertIn("ARG CODEX_RELEASE=${workspace_codex_release}", self.workspace_dockerfile)
         self.assertIn('CODEX_RELEASE="$CODEX_RELEASE"', self.workspace_dockerfile)
@@ -259,23 +257,17 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn("ensure_host_key ecdsa", self.workspace_entrypoint)
         self.assertIn("ensure_host_key rsa 4096", self.workspace_entrypoint)
         self.assertIn("HostKey $host_key_dir/ssh_host_ed25519_key", self.workspace_entrypoint)
-        self.assertIn("HostKey $host_key_dir/ssh_host_ecdsa_key", self.workspace_entrypoint)
-        self.assertIn("HostKey $host_key_dir/ssh_host_rsa_key", self.workspace_entrypoint)
-        self.assertIn("WORKSPACE_FUSE_ENABLED", self.workspace_entrypoint)
-        self.assertIn("workspace-drive-mount", self.workspace_entrypoint)
-        self.assertIn("continuing SSH startup", self.workspace_entrypoint)
-        self.assertNotIn("ssh-keygen -A", self.workspace_entrypoint)
-        self.assertIn("export CODEX_HOME=", self.workspace_entrypoint)
-        self.assertIn('export PATH="$home_dir/.local/bin:/usr/local/bin:', self.workspace_entrypoint)
-        self.assertIn("SetEnv CODEX_HOME=", self.workspace_entrypoint)
-        self.assertIn("SetEnv PATH=", self.workspace_entrypoint)
-        self.assertIn('"$home_dir/.local/bin:/usr/local/bin:/usr/bin:/bin"', self.workspace_entrypoint)
+        self.assertNotIn("rclone", self.workspace_entrypoint)
+        self.assertNotIn("fuse", self.workspace_entrypoint.lower())
+        self.assertIn("install_para_memory_drive_skill", self.workspace_entrypoint)
+        self.assertIn("upsert_workspace_agents_guidance", self.workspace_entrypoint)
+        self.assertIn("para-memory-drive/SKILL.md", self.workspace_entrypoint)
+        self.assertIn("Google Drive is the source of", self.workspace_entrypoint)
+        self.assertIn("does not mount Drive locally", self.workspace_entrypoint)
         self.assertIn("WORKSPACE_AUTHORIZED_KEYS_BASE64=${workspace_ssh_public_keys_base64}", self.workspace_env)
-        self.assertIn("WORKSPACE_FUSE_ENABLED=${workspace_fuse_enabled}", self.workspace_env)
         self.assertIn("CODEX_HOME=/home/${workspace_username}/.codex", self.workspace_env)
-        self.assertIn("workspace_fuse_enabled=${workspace_fuse_enabled}", self.diagnostics)
-        self.assertIn("fusermount3=present", self.diagnostics)
-        self.assertIn("rclone=present", self.diagnostics)
+        self.assertNotIn("FUSE", self.workspace_env)
+        self.assertNotIn("workspace-drive", self.diagnostics)
 
     def test_workspace_codex_auto_updater_uses_the_canonical_user_install_and_fails_open_at_startup(self) -> None:
         self.assertIn("COPY workspace-codex-update.sh", self.workspace_dockerfile)
@@ -372,33 +364,18 @@ class RuntimeTemplateTest(unittest.TestCase):
         self.assertIn('install -d -m 0755 "$app/data/workspace/home"', self.installer)
         self.assertIn('install -d -m 0700 -o root -g root "$app/data/workspace/ssh-host-keys"', self.installer)
 
-    def test_workspace_drive_fuse_is_foreground_supervised_and_fail_closed(self) -> None:
-        self.assertIn("%{ if workspace_drive_fuse_enabled }", self.compose)
-        self.assertIn("/dev/fuse:/dev/fuse", self.compose)
-        self.assertIn("SYS_ADMIN", self.compose)
-        self.assertIn("apparmor:unconfined", self.compose)
-        self.assertIn("workspace-rclone:/etc/rclone", self.compose)
-        self.assertIn('ENTRYPOINT ["/usr/bin/tini", "--"]', self.workspace_dockerfile)
-        self.assertIn('rclone mount "$drive_remote" "$mountpoint"', self.workspace_entrypoint)
-        self.assertIn("--vfs-cache-mode full", self.workspace_entrypoint)
-        self.assertIn("Drive mount did not become ready", self.workspace_entrypoint)
-        self.assertIn("Drive mount became unavailable; terminating the workspace", self.workspace_entrypoint)
-        self.assertIn("--rc-addr 127.0.0.1:5572", self.workspace_entrypoint)
-        self.assertIn("core/stats", self.workspace_healthcheck)
-        self.assertIn("(.errors // 0) == 0", self.workspace_healthcheck)
-        self.assertNotIn("--daemon", self.workspace_entrypoint)
-        self.assertNotIn("chown -R", self.workspace_entrypoint)
-        self.assertIn('chown "$username:$username" "$home_dir"', self.workspace_entrypoint)
-        self.assertIn("findmnt -M", self.workspace_healthcheck)
-        self.assertIn("timeout 5 stat", self.workspace_healthcheck)
-        self.assertIn(
-            "timeout 5 rclone rc --url http://127.0.0.1:5572 rc/noop",
-            self.workspace_entrypoint,
-        )
-        self.assertIn(
-            "timeout 5 rclone rc --url http://127.0.0.1:5572 core/stats",
-            self.workspace_healthcheck,
-        )
+    def test_workspace_drive_skill_is_staged_without_fuse_support(self) -> None:
+        main_tf = MAIN_TF.read_text(encoding="utf-8")
+        self.assertIn("runtime_workspace_drive_skill", main_tf)
+        self.assertIn("workspace-para-memory-drive-skill.md", main_tf)
+        self.assertIn("workspace-para-memory-drive-skill.md", self.installer)
+        for source in [self.compose, self.workspace_entrypoint, self.workspace_env, self.diagnostics, self.installer, main_tf]:
+            self.assertNotIn("workspace_drive_fuse_enabled", source)
+            self.assertNotIn("workspace_fuse_enabled", source)
+        for source in [self.compose, self.workspace_entrypoint, self.workspace_dockerfile, self.diagnostics]:
+            self.assertNotIn("rclone", source)
+            self.assertNotIn("/dev/fuse", source)
+            self.assertNotIn("SYS_ADMIN", source)
 
     def test_workspace_user_uses_stable_unprivileged_numeric_identity(self) -> None:
         self.assertIn('getent passwd 1000', self.workspace_dockerfile)
@@ -427,30 +404,42 @@ class RuntimeTemplateTest(unittest.TestCase):
         for required_build_input in [
             '"$app/workspace.Dockerfile"',
             '"$app/workspace-entrypoint.sh"',
-            '"$app/workspace-drive-healthcheck"',
+            '"$app/workspace-para-memory-drive-skill.md"',
             '"$app/workspace-codex-update.sh"',
             '"$app/workspace-codex-control.py"',
         ]:
             self.assertIn(required_build_input, image_restore)
 
-    def test_workspace_drive_residue_requires_explicit_recovery(self) -> None:
-        self.assertIn("workspace Drive deployment blocked by local residue", self.installer)
-        self.assertIn("Nothing was uploaded, moved, or deleted.", self.installer)
-        self.assertIn("client_id", self.installer)
-        self.assertIn("client_secret", self.installer)
-        self.assertNotIn("recover_copy", self.installer)
-        self.assertIn("recovery-dry-run", self.workspace_drive_helper)
-        self.assertIn("recover-copy requires --confirm-upload", self.workspace_drive_helper)
-        self.assertIn("quarantine requires --confirm-quarantine", self.workspace_drive_helper)
-        self.assertIn("--dry-run", self.workspace_drive_helper)
-        self.assertIn("--one-way", self.workspace_drive_helper)
-        self.assertIn("--size-only", self.workspace_drive_helper)
-        self.assertIn('-v "$config_dir:/etc/rclone"', self.workspace_drive_helper)
-        self.assertNotIn('-v "$config:/etc/rclone/rclone.conf"', self.workspace_drive_helper)
-        self.assertIn('.workspace-image-context', self.installer)
-        self.assertIn('docker build -t agent-stack-workspace:local -f "$build_context/Dockerfile" "$build_context"', self.installer)
-        self.assertNotIn('docker build -t agent-stack-workspace:local -f "$app/workspace.Dockerfile" "$app"', self.installer)
-        self.assertIn("modprobe fuse", self.installer)
+    def test_workspace_agents_guidance_preserves_user_content_and_is_idempotent(self) -> None:
+        start = self.workspace_entrypoint.index("upsert_workspace_agents_guidance() {")
+        end = self.workspace_entrypoint.index("install_para_memory_drive_skill", start)
+        function = self.workspace_entrypoint[start:end]
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            agents = home / "AGENTS.md"
+            agents.write_text(
+                "# My instructions\n\nKeep this user-authored section.\n",
+                encoding="utf-8",
+            )
+            username = pwd.getpwuid(os.getuid()).pw_name
+            harness = home / "seed-agents.sh"
+            harness.write_text(
+                "#!/usr/bin/env bash\nset -euo pipefail\n"
+                f'home_dir={shlex.quote(str(home))}\n'
+                f'username={shlex.quote(username)}\n'
+                f"{function}\n"
+                "upsert_workspace_agents_guidance\n"
+                "upsert_workspace_agents_guidance\n",
+                encoding="utf-8",
+            )
+            harness.chmod(0o755)
+            result = subprocess.run(["bash", str(harness)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            content = agents.read_text(encoding="utf-8")
+            self.assertIn("Keep this user-authored section.", content)
+            self.assertEqual(content.count("<!-- agent-stack: para-memory-drive begin -->"), 1)
+            self.assertEqual(content.count("<!-- agent-stack: para-memory-drive end -->"), 1)
+            self.assertIn("Google Drive is the source of", content)
 
     def test_workspace_diagnostics_bridge_is_limited_and_forced_command(self) -> None:
         self.assertIn("agent-stack-diagnostics@host.docker.internal", self.workspace_entrypoint)
@@ -496,60 +485,6 @@ class RuntimeProvisioningContractTest(unittest.TestCase):
         self.assertIn("install -d -m 0700", self.main_tf)
         self.assertIn("chmod 0700 ${local.runtime_staging_dir}", self.main_tf)
 
-
-class WorkspaceDriveRecoveryTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temp_path = Path(tempfile.mkdtemp())
-        self.addCleanup(self.cleanup_temp_path)
-        self.app_root = self.temp_path / "agent-stack"
-        self.residue = self.app_root / "data" / "workspace" / "home" / "workspace"
-        self.residue.mkdir(parents=True)
-        (self.residue / "proof.md").write_text("proof", encoding="utf-8")
-
-        template = (RUNTIME_DIR / "agent-stack-workspace-drive.sh.tpl").read_text(encoding="utf-8")
-        remote_base64 = base64.b64encode(b"workspace-drive:").decode("ascii")
-        rendered = (
-            template.replace("${workspace_drive_fuse_enabled}", "true")
-            .replace("${workspace_drive_remote_base64}", remote_base64)
-            .replace("$${", "${")
-        )
-        self.script = self.temp_path / "agent-stack-workspace-drive"
-        self.script.write_text(rendered, encoding="utf-8")
-        self.script.chmod(0o755)
-        self.env = dict(os.environ)
-        self.env["AGENT_STACK_APP_ROOT"] = str(self.app_root)
-        self.env["AGENT_STACK_MOUNTPOINT_OWNER"] = str(os.getuid())
-        self.env["AGENT_STACK_MOUNTPOINT_GROUP"] = str(os.getgid())
-
-    def cleanup_temp_path(self) -> None:
-        if self.residue.exists():
-            self.residue.chmod(0o700)
-        shutil.rmtree(self.temp_path)
-
-    def test_quarantine_requires_exact_confirmation(self) -> None:
-        result = subprocess.run(
-            ["bash", str(self.script), "quarantine"],
-            env=self.env,
-            capture_output=True,
-            text=True,
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("requires --confirm-quarantine", result.stderr)
-        self.assertTrue((self.residue / "proof.md").exists())
-
-    def test_confirmed_quarantine_is_a_recoverable_move(self) -> None:
-        subprocess.run(
-            ["bash", str(self.script), "quarantine", "--confirm-quarantine"],
-            check=True,
-            env=self.env,
-            capture_output=True,
-            text=True,
-        )
-        quarantines = list(self.residue.parent.glob("workspace.local-recovery-*"))
-        self.assertEqual(len(quarantines), 1)
-        self.assertEqual((quarantines[0] / "proof.md").read_text(encoding="utf-8"), "proof")
-        self.assertTrue(self.residue.is_dir())
-        self.assertEqual(self.residue.stat().st_mode & 0o777, 0)
 
 
 class LayoutMigratorTest(unittest.TestCase):

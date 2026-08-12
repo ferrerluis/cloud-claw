@@ -1,5 +1,3 @@
-FROM rclone/rclone:1.74.4 AS rclone
-
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -30,7 +28,6 @@ RUN apt-get update \
     ca-certificates \
     curl \
     git \
-    fuse3 \
     jq \
     openssh-client \
     openssh-server \
@@ -43,8 +40,6 @@ RUN apt-get update \
     tini \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
-
 RUN curl -fsSL https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh \
   && CODEX_NON_INTERACTIVE=1 CODEX_RELEASE="$CODEX_RELEASE" CODEX_INSTALL_DIR=/usr/local/bin CODEX_HOME=/opt/codex sh /tmp/install-codex.sh \
   && rm -f /tmp/install-codex.sh
@@ -52,14 +47,14 @@ RUN curl -fsSL https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh \
 RUN install -d -m 0755 /usr/local/libexec
 
 COPY workspace-entrypoint.sh /usr/local/bin/workspace-entrypoint
-COPY workspace-drive-healthcheck /usr/local/bin/workspace-drive-healthcheck
+COPY para-memory-drive/SKILL.md /usr/local/share/agent-stack/skills/para-memory-drive/SKILL.md
 COPY workspace-codex-update.sh /usr/local/libexec/agent-stack-workspace-codex-update
 COPY workspace-codex-control.py /usr/local/libexec/agent-stack-workspace-codex-control
 
-RUN chmod 0755 /usr/local/bin/workspace-entrypoint /usr/local/bin/workspace-drive-healthcheck \
+RUN chmod 0755 /usr/local/bin/workspace-entrypoint \
+  && chmod 0644 /usr/local/share/agent-stack/skills/para-memory-drive/SKILL.md \
   && chmod 0755 /usr/local/libexec/agent-stack-workspace-codex-update \
   && chmod 0755 /usr/local/libexec/agent-stack-workspace-codex-control \
-  && printf '%s\n' user_allow_other > /etc/fuse.conf \
   && mkdir -p /run/sshd
 
 EXPOSE 22

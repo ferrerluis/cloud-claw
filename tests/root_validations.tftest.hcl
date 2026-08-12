@@ -57,7 +57,6 @@ variables {
   workspace_codex_auto_update_timezone           = "America/New_York"
   workspace_codex_auto_update_time               = "04:00"
   workspace_codex_auto_recover_interrupted_turns = false
-  workspace_fuse_enabled                         = false
   vpn_enabled                                    = false
   vpn_provider                                   = "nordvpn_openvpn"
   vpn_nordvpn_token                              = ""
@@ -377,62 +376,6 @@ run "rejects_workspace_private_key_path_in_public_keys" {
 
   expect_failures = [
     var.workspace_ssh_public_keys,
-  ]
-}
-
-run "rejects_drive_fuse_without_workspace" {
-  command = plan
-
-  variables {
-    workspace_drive_fuse_enabled         = true
-    workspace_drive_rclone_config_base64 = "Y29uZmln"
-  }
-
-  expect_failures = [
-    var.workspace_drive_fuse_enabled,
-  ]
-}
-
-run "rejects_drive_fuse_without_valid_base64_config" {
-  command = plan
-
-  variables {
-    enabled_services                     = ["openclaw", "workspace"]
-    workspace_password                   = "workspace-password-agent-stack-tests"
-    workspace_drive_fuse_enabled         = true
-    workspace_drive_rclone_config_base64 = "not base64!"
-  }
-
-  expect_failures = [
-    var.workspace_drive_rclone_config_base64,
-  ]
-}
-
-run "rejects_workspace_fuse_without_workspace_service" {
-  command = plan
-
-  variables {
-    workspace_fuse_enabled = true
-  }
-
-  expect_failures = [
-    var.workspace_fuse_enabled,
-  ]
-}
-
-run "rejects_generic_and_managed_workspace_fuse_together" {
-  command = plan
-
-  variables {
-    enabled_services                     = ["openclaw", "workspace"]
-    workspace_password                   = "workspace-password-agent-stack-tests"
-    workspace_fuse_enabled               = true
-    workspace_drive_fuse_enabled         = true
-    workspace_drive_rclone_config_base64 = "Y29uZmln"
-  }
-
-  expect_failures = [
-    var.workspace_fuse_enabled,
   ]
 }
 

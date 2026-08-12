@@ -43,9 +43,7 @@ require_file agent-stack-vpn
 require_file agent-stack-vpn-openvpn
 require_file workspace.Dockerfile
 require_file workspace-entrypoint.sh
-require_file workspace-drive-healthcheck
-require_file agent-stack-workspace-drive
-require_file workspace-rclone.conf.base64
+require_file workspace-para-memory-drive-skill.md
 require_file workspace-codex-update.sh
 require_file workspace-codex-control.py
 require_file agent-stack-workspace-codex-update
@@ -300,7 +298,8 @@ build_workspace_image() {
   install -d -m 0700 "$build_context"
   install -m 0644 "$app/workspace.Dockerfile" "$build_context/Dockerfile"
   install -m 0755 "$app/workspace-entrypoint.sh" "$build_context/workspace-entrypoint.sh"
-  install -m 0755 "$app/workspace-drive-healthcheck" "$build_context/workspace-drive-healthcheck"
+  install -d -m 0755 "$build_context/para-memory-drive"
+  install -m 0644 "$app/workspace-para-memory-drive-skill.md" "$build_context/para-memory-drive/SKILL.md"
   install -m 0755 "$app/workspace-codex-update.sh" "$build_context/workspace-codex-update.sh"
   install -m 0755 "$app/workspace-codex-control.py" "$build_context/workspace-codex-control.py"
   docker build -t agent-stack-workspace:local -f "$build_context/Dockerfile" "$build_context"
@@ -319,85 +318,13 @@ install_workspace_runtime() {
   install -d -m 0700 -o root -g root "$app/data/workspace/ssh-host-keys"
   install -m 0644 "$staging/workspace.Dockerfile" "$app/workspace.Dockerfile"
   install -m 0755 "$staging/workspace-entrypoint.sh" "$app/workspace-entrypoint.sh"
-  install -m 0755 "$staging/workspace-drive-healthcheck" "$app/workspace-drive-healthcheck"
+  install -m 0644 "$staging/workspace-para-memory-drive-skill.md" "$app/workspace-para-memory-drive-skill.md"
   install -m 0755 "$staging/workspace-codex-update.sh" "$app/workspace-codex-update.sh"
   install -m 0755 "$staging/workspace-codex-control.py" "$app/workspace-codex-control.py"
   install_workspace_diagnostics_bridge
 
   echo "[workspace] Building local workspace image..."
   build_workspace_image
-}
-
-workspace_drive_config_value() {
-  local file="$1"
-  local section="$2"
-  local key="$3"
-  awk -v section="[$section]" -v wanted="$key" '
-    function trim(value) {
-      sub(/^[[:space:]]+/, "", value)
-      sub(/[[:space:]]+$/, "", value)
-      return value
-    }
-    /^[[:space:]]*\[/ {
-      current=$0
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", current)
-      next
-    }
-    current == section {
-      equals=index($0, "=")
-      if (equals == 0) next
-      candidate=trim(substr($0, 1, equals - 1))
-      if (candidate == wanted) {
-        print trim(substr($0, equals + 1))
-        exit
-      }
-    }
-  ' "$file"
-}
-
-prepare_workspace_drive() {
-  install -m 0755 "$staging/agent-stack-workspace-drive" /usr/local/bin/agent-stack-workspace-drive
-  local recovery_dir=/var/lib/agent-stack/workspace-drive-recovery
-
-  if [ "${workspace_drive_fuse_enabled}" != "true" ]; then
-    echo "[workspace-drive] FUSE mount disabled."
-    rm -rf "$recovery_dir"
-    if [ -d "$app/data/workspace/home/workspace" ]; then
-      chown 1000:1000 "$app/data/workspace/home/workspace" || true
-      chmod 0700 "$app/data/workspace/home/workspace" || true
-    fi
-    return 0
-  fi
-
-  [ "${workspace_enabled}" = "true" ] || fail "workspace Drive FUSE requires the workspace service"
-  if [ ! -c /dev/fuse ] && command -v modprobe >/dev/null 2>&1; then
-    modprobe fuse || true
-  fi
-  [ -c /dev/fuse ] || fail "/dev/fuse is unavailable on the host; cannot enable workspace Drive FUSE"
-  [ -s "$staging/workspace-rclone.conf.base64" ] || fail "workspace Drive FUSE requires workspace-rclone.conf.base64"
-  if ! base64 --decode "$staging/workspace-rclone.conf.base64" > "$staging/workspace-rclone.conf"; then
-    fail "workspace Drive rclone config is not valid base64"
-  fi
-  chmod 0600 "$staging/workspace-rclone.conf"
-
-  local remote_name
-  remote_name='${workspace_drive_remote_name}'
-  [ "$(workspace_drive_config_value "$staging/workspace-rclone.conf" "$remote_name" type)" = "drive" ] || fail "workspace Drive remote '$remote_name' must have type=drive"
-  [ -n "$(workspace_drive_config_value "$staging/workspace-rclone.conf" "$remote_name" client_id)" ] || fail "workspace Drive remote '$remote_name' requires a custom Google OAuth client_id"
-  [ -n "$(workspace_drive_config_value "$staging/workspace-rclone.conf" "$remote_name" client_secret)" ] || fail "workspace Drive remote '$remote_name' requires a custom Google OAuth client_secret"
-  install -d -m 0700 "$recovery_dir"
-  install -m 0600 "$staging/workspace-rclone.conf" "$recovery_dir/rclone.conf"
-
-  local mountpoint="$app/data/workspace/home/workspace"
-  install -d -m 0000 -o root -g root "$mountpoint"
-  if find "$mountpoint" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | grep -q .; then
-    echo "[workspace-drive] Local files exist beneath the intended FUSE mountpoint." >&2
-    echo "[workspace-drive] Nothing was uploaded, moved, or deleted." >&2
-    echo "[workspace-drive] Review with: sudo agent-stack-workspace-drive recovery-dry-run" >&2
-    fail "workspace Drive deployment blocked by local residue"
-  fi
-  chmod 0000 "$mountpoint"
-  echo "[workspace-drive] Config and protected empty mountpoint validated."
 }
 
 backup_workspace_image() {
@@ -422,7 +349,7 @@ restore_workspace_image() {
   fi
   if [ -f "$app/workspace.Dockerfile" ] \
       && [ -f "$app/workspace-entrypoint.sh" ] \
-      && [ -f "$app/workspace-drive-healthcheck" ] \
+      && [ -f "$app/workspace-para-memory-drive-skill.md" ] \
       && [ -f "$app/workspace-codex-update.sh" ] \
       && [ -f "$app/workspace-codex-control.py" ]; then
     build_workspace_image
@@ -596,12 +523,11 @@ wait_agent_stack_initial_restart() {
 configure_caddyfile
 configure_swap
 install_openclaw_runtime_patches
-prepare_workspace_drive
 docker compose --env-file "$staging/.env" -f "$staging/docker-compose.yml" config >/dev/null
 
 rm -rf "$previous"
 install -d -m 0700 "$previous"
-for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh workspace-drive-healthcheck workspace-codex-update.sh workspace-codex-control.py agent-stack-workspace-drive workspace-rclone; do
+for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh workspace-para-memory-drive-skill.md workspace-codex-update.sh workspace-codex-control.py; do
   [ -e "$app/$path" ] && cp -a "$app/$path" "$previous/" || true
 done
 backup_workspace_image
@@ -609,15 +535,6 @@ backup_workspace_image
 install -m 0644 "$staging/docker-compose.yml" "$app/docker-compose.yml"
 install -m 0600 "$staging/.env" "$app/.env"
 install -m 0600 "$staging/workspace.env" "$app/workspace.env"
-install -m 0755 "$staging/agent-stack-workspace-drive" "$app/agent-stack-workspace-drive"
-install -m 0755 "$app/agent-stack-workspace-drive" /usr/local/bin/agent-stack-workspace-drive
-if [ "${workspace_drive_fuse_enabled}" = "true" ]; then
-  install -d -m 0700 "$app/workspace-rclone"
-  install -m 0600 "$staging/workspace-rclone.conf" "$app/workspace-rclone/rclone.conf"
-  rm -rf /var/lib/agent-stack/workspace-drive-recovery
-else
-  rm -rf "$app/workspace-rclone" /var/lib/agent-stack/workspace-drive-recovery
-fi
 if [ -f "$staging/Caddyfile" ]; then
   install -m 0600 "$staging/Caddyfile" "$app/Caddyfile"
 else
@@ -670,15 +587,12 @@ if [ "$restart_status" -ne 0 ]; then
 fi
 if ! wait_agent_stack_initial_restart; then
   echo "[runtime] restart did not recover; restoring previous runtime files" >&2
-  for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh workspace-drive-healthcheck workspace-codex-update.sh workspace-codex-control.py agent-stack-workspace-drive workspace-rclone; do
+  for path in docker-compose.yml .env workspace.env Caddyfile tailscale-bootstrap.sh host-tailscale-bootstrap.sh agent-stack-vpn agent-stack-vpn-openvpn workspace.Dockerfile workspace-entrypoint.sh workspace-para-memory-drive-skill.md workspace-codex-update.sh workspace-codex-control.py; do
     rm -rf "$app/$path"
     if [ -e "$previous/$path" ]; then
       cp -a "$previous/$path" "$app/$path"
     fi
   done
-  if [ -f "$app/agent-stack-workspace-drive" ]; then
-    install -m 0755 "$app/agent-stack-workspace-drive" /usr/local/bin/agent-stack-workspace-drive
-  fi
   restore_workspace_image || echo "[workspace] WARNING: could not restore the prior workspace image" >&2
   systemctl restart agent-stack || true
   fail "agent-stack restart failed"

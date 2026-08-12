@@ -193,23 +193,13 @@ workspace_codex_auto_recover_interrupted_turns = false
 workspace_username                  = "user"
 workspace_password                  = ""
 workspace_ssh_host_port             = 2222
-workspace_fuse_enabled              = false
 workspace_ssh_public_keys = [
   # "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExamplePublicKeyOnly user@example.com",
 ]
 
-# Optional: make /home/<workspace_username>/workspace the Google Drive remote
-# itself through rclone FUSE. This is not a periodic copy. The workspace refuses
-# SSH access if the mount is missing and exits if the mount later fails.
-#
-# Create the remote locally with a custom Google OAuth client ID and secret, then
-# base64-encode the complete rclone.conf into the sensitive value below. Terraform
-# state will contain this payload, so protect state as a secret.
-workspace_drive_fuse_enabled         = false
-workspace_drive_remote              = "workspace-drive:"
-workspace_drive_rclone_config_base64 = ""
-workspace_drive_vfs_cache_max_size   = "10G"
-workspace_drive_vfs_cache_min_free_space = "2G"
+# Workspace knowledge uses the bundled para-memory-drive skill and the agent's
+# connected Google Drive capability. Do not configure a Drive filesystem mount,
+# rclone credentials, or FUSE settings in this file.
 
 # ── Optional host VPN egress ────────────────────────────────────
 # Routes host + Docker service egress through a VPN tunnel after provisioning.
